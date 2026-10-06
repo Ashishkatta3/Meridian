@@ -58,10 +58,12 @@ sunrise and sunset, weather and a map pin. To add one that is missing, append
 `[name, capital, lat, lon, timezone]` to the right continent in `WORLD`.
 
 **A city or region in any country** — you do not edit a file for this. Open the
-country page and click **+** on any suggested region or major city. It is added
-to your places with its own clock, a been/want mark and a pin on the world map.
-Suggestions come from `SUGGEST` in `world.js`: up to 30 regions and 24 cities per
-country, the cities ranked by population.
+country page and type into **Add a place**. Known cities autocomplete and bring
+their own coordinates and timezone; anything else is added at the capital's
+position. Suggested regions sit below as one-click chips.
+
+Each place you add gets a full page of its own: live clock, sunrise and sunset,
+weather, a description you write, things to do, where you ate, and a CSV export.
 
 **A city** — add it to its state's list in `STATES` as `[name, latitude, longitude]`.
 A fourth item overrides the timezone for cities in a state that spans two
@@ -74,22 +76,18 @@ A fourth item overrides the timezone for cities in a state that spans two
 ]],
 ```
 
-**Things to do** — add to `TODO`, keyed `ABBR-city-slug`. Each entry is
-`[title, description, tag]`.
+**Things to do and restaurants** — you do not edit a file for these either. Open
+any city or place page and use **+ Add a thing to do** or **+ Add a place you
+ate**. Each entry takes a name, a description, a tag and as many photos as you
+like, and the ↑ ↓ buttons reorder the list. EDIT and DELETE do what they say.
 
-```js
-"TX-marfa":[
-  ["Marfa Lights viewing area","Unexplained lights on the horizon east of town, free to watch.","FREE"]
-],
-```
+The lists in `TODO` and `EAT` in `data.js` are only the starting contents. The
+moment you edit, reorder or add anything for a city, that city's list is copied
+into your browser and your copy wins from then on — the seeds in the file are
+left untouched as a fallback for a fresh browser.
 
-**Restaurants** — same shape, in `EAT`: `[name, cuisine, note]`.
-
-```js
-"TX-austin":[
-  ["Franklin Barbecue","Barbecue · East Austin","The queue is the price. Worth it once."]
-],
-```
+Photos are shrunk to 1600px and stored in IndexedDB rather than localStorage,
+which has room for a few images at most. Text entries stay in localStorage.
 
 **Parks, falls, lakes and regions** that belong to no single city go in
 `STATEWIDE`, under the state's abbreviation:
@@ -106,8 +104,10 @@ put its regions into `STATES`. The state and city levels follow automatically.
 ## The map
 
 The home page and `#/map` both show the whole world. **Scroll to zoom, drag to
-pan, click a pin to open it.** Pins hold their size as you zoom, and labels fade
-in as you get closer — countries first, then cities. The `#/map` page can filter
+pan, click a pin to open it.** Pins hold their size as you zoom. Labels are placed with
+collision detection — where two names would overlap, the place you have marked
+keeps its label and the unmarked one loses it — so the map stays readable at
+every zoom level instead of turning into a wall of overlapping text. The `#/map` page can filter
 down to just the places you have been or just the ones you want to go.
 
 Coastlines are drawn as SVG from `land.js` with a plain equirectangular
@@ -131,7 +131,11 @@ city or park inside it is, unless you set it yourself.
 To wipe everything and start over, run this in the browser console:
 
 ```js
-localStorage.removeItem('meridian-status'); location.reload();
+localStorage.removeItem('meridian-status');    // been / want marks
+localStorage.removeItem('meridian-added');     // places you added
+localStorage.removeItem('meridian-entries');   // your entries and notes
+indexedDB.deleteDatabase('meridian-photos');   // your photos
+location.reload();
 ```
 
 ---
