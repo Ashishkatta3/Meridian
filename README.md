@@ -33,10 +33,19 @@ python3 -m http.server 8000
 index.html              page shell — nav, footer, nothing else
 assets/css/styles.css   the whole design: tokens, light + dark, every component
 assets/js/data.js       YOUR DATA. The only file you need to edit.
+assets/js/world.js      generated: 179 countries, each with its capital's
+                        coordinates and IANA timezone, plus ~2,700 regions and
+                        ~3,200 major cities offered as click-to-add suggestions
+assets/js/land.js       generated: world coastlines for the map (Natural Earth
+                        1:110m, simplified — public domain)
 assets/js/app.js        engine, views, router. You should not have to touch this.
 build.sh                optional: bundles everything into dist/index.html as one file
 .nojekyll               required by GitHub Pages
 ```
+
+The two generated files come from [GeoNames](https://geonames.org) (CC BY 4.0),
+the [countries-states-cities database](https://github.com/dr5hn/countries-states-cities-database)
+(ODbL) and [Natural Earth](https://naturalearthdata.com) (public domain).
 
 ---
 
@@ -44,14 +53,15 @@ build.sh                optional: bundles everything into dist/index.html as one
 
 Everything lives in `assets/js/data.js`.
 
-**A country** — add its name to the right continent in `WORLD`. It gets a page
-immediately, and you can mark it been or want. Nothing else needed.
+**A country** — all 179 are already there in `world.js`, each with a live clock,
+sunrise and sunset, weather and a map pin. To add one that is missing, append
+`[name, capital, lat, lon, timezone]` to the right continent in `WORLD`.
 
-```js
-["Europe","Short distances, long histories…",[
-  "United Kingdom","Ireland","France", "Slovenia"   // ← new
-]],
-```
+**A city or region in any country** — you do not edit a file for this. Open the
+country page and click **+** on any suggested region or major city. It is added
+to your places with its own clock, a been/want mark and a pin on the world map.
+Suggestions come from `SUGGEST` in `world.js`: up to 30 regions and 24 cities per
+country, the cities ranked by population.
 
 **A city** — add it to its state's list in `STATES` as `[name, latitude, longitude]`.
 A fourth item overrides the timezone for cities in a state that spans two
@@ -93,6 +103,18 @@ put its regions into `STATES`. The state and city levels follow automatically.
 
 ---
 
+## The map
+
+The home page and `#/map` both show the whole world. **Scroll to zoom, drag to
+pan, click a pin to open it.** Pins hold their size as you zoom, and labels fade
+in as you get closer — countries first, then cities. The `#/map` page can filter
+down to just the places you have been or just the ones you want to go.
+
+Coastlines are drawn as SVG from `land.js` with a plain equirectangular
+projection, so there is no tile server, no API key and no network call.
+
+---
+
 ## Been / want to go
 
 Every place carries a two-button control: **BEEN** and **WANT**. Click one to set
@@ -116,14 +138,17 @@ localStorage.removeItem('meridian-status'); location.reload();
 
 ## Clocks, sun and weather
 
-**Clocks** use the browser's own `Intl` with each place's IANA timezone. No network.
+**Clocks** use the browser's own `Intl` with each place's IANA timezone. No
+network. Every country runs one off its capital, so Japan shows Tokyo's time and
+Kenya shows Nairobi's.
 
 **Sunrise and sunset** are computed from latitude and longitude with the NOAA
 sunrise equation, in `app.js`. No network, and correct year-round — this is what
 decides whether a page loads light or dark.
 
 **Weather** comes from [Open-Meteo](https://open-meteo.com) — free, no API key, no
-account. It is a single `fetch` in `app.js`. If it is blocked or you are offline,
+account. It is a single `fetch` in `app.js`, batched so one request covers every
+place on the page. If it is blocked or you are offline,
 the sky indicator falls back to the sun or moon glyph with a dash instead of a
 temperature, and everything else keeps working.
 
@@ -144,8 +169,9 @@ than all stacking on the city centre.
 
 ## Theme
 
-Pages follow the local clock of the place you are looking at — a city page opens
-dark when it is night there. The **AUTO / LIGHT / DARK** control in the header
+Pages follow the local clock of the place you are looking at — a city or country
+page opens dark when it is night there. Anywhere a list shows several places at
+once, the ones where the sun has already set are dimmed. The **AUTO / LIGHT / DARK** control in the header
 overrides it and the choice is remembered.
 
 All colours are CSS custom properties at the top of `styles.css`, defined once for
