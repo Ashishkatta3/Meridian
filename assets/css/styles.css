@@ -231,8 +231,7 @@ html[data-theme="dark"] .worldmap .land path{fill:#182029;stroke:#2B3640}
 .worldmap .halo{fill:var(--pin);opacity:.16}
 .worldmap .halo.w{fill:var(--accent)}
 .worldmap .pins text{font-family:var(--mono);fill:var(--ink);paint-order:stroke;
-  stroke:var(--ground);stroke-width:3px;stroke-linejoin:round;opacity:0;pointer-events:none;transition:opacity .2s ease}
-.worldmap.zoom1 .pins text.t1,.worldmap.zoom2 .pins text.t1,.worldmap.zoom2 .pins text.t2{opacity:1}
+  stroke:var(--ground);stroke-linejoin:round;opacity:0;pointer-events:none;transition:opacity .16s ease}
 .mapctl{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:6px;z-index:3}
 .mapctl button{width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;
   background:var(--surface);color:var(--ink);border:1px solid var(--rule);border-radius:2px;font-size:17px;line-height:1}
@@ -267,3 +266,44 @@ html[data-theme="dark"] .board-r.night,html[data-theme="dark"] .card.night{backg
   color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.12em;height:36px;padding:0 12px}
 .rm:hover{color:var(--ink);border-color:var(--ink)}
 .navlinks a.on{color:var(--ink);font-weight:600}
+
+/* ---- writing your own entries ---- */
+.tools{display:inline-flex;gap:6px;align-items:center}
+.tbtn{appearance:none;background:transparent;border:1px solid var(--rule);border-radius:999px;cursor:pointer;
+  color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.1em;height:32px;min-width:32px;padding:0 10px}
+.tbtn:hover:not(:disabled){color:var(--ink);border-color:var(--ink)}
+.tbtn:disabled{opacity:.35;cursor:default}
+.editor{display:flex;flex-direction:column;gap:12px;margin-top:26px;padding:24px;
+  background:var(--surface);border:1px solid var(--rule);border-radius:2px}
+.editor.shut{display:none}
+.editor input[type=text],.editor textarea{font-family:var(--sans);font-size:15px;color:var(--ink);
+  background:var(--ground);border:1px solid var(--rule);border-radius:2px;padding:12px 14px;width:100%;resize:vertical}
+.editor input[type=text]::placeholder,.editor textarea::placeholder{color:var(--ghost)}
+.edrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.filebtn{display:inline-flex;align-items:center;font-size:14px;font-weight:500;cursor:pointer;color:var(--ink);
+  border:1px dashed var(--rule);border-radius:2px;padding:0 20px;min-height:46px}
+.filebtn:hover{border-color:var(--pin)}
+.filebtn input{display:none}
+.prev{display:flex;flex-wrap:wrap;gap:10px}
+.prev:empty{display:none}
+.pv{position:relative;display:block;width:104px;height:78px;border-radius:2px;overflow:hidden;background:var(--rule-soft)}
+.pv img{width:100%;height:100%;object-fit:cover;display:block}
+.pv button{position:absolute;top:4px;right:4px;width:22px;height:22px;border:0;border-radius:999px;cursor:pointer;
+  background:rgba(10,14,18,.78);color:#fff;font-size:14px;line-height:1}
+.photos{display:flex;flex-wrap:wrap;gap:8px;padding-top:6px}
+.ph{padding:0;border:0;background:none;cursor:zoom-in;width:124px;height:92px;border-radius:2px;overflow:hidden;background:var(--rule-soft)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.lightbox{position:fixed;inset:0;z-index:200;background:rgba(6,9,12,.92);display:flex;align-items:center;
+  justify-content:center;padding:4vmin;cursor:zoom-out}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain}
+.lightbox button{position:absolute;top:16px;right:16px;width:44px;height:44px;border:0;border-radius:999px;
+  background:rgba(255,255,255,.14);color:#fff;font-size:22px;cursor:pointer}
+.addbox{position:relative;display:flex;flex-wrap:wrap;gap:10px;padding-top:22px}
+.addbox input{flex:999 1 280px;min-width:0;font-family:var(--sans);font-size:15px;color:var(--ink);
+  background:var(--surface);border:1px solid var(--rule);border-radius:2px;padding:0 16px;min-height:46px}
+.ac{position:absolute;left:0;top:72px;z-index:30;width:min(360px,100%);background:var(--surface);
+  border:1px solid var(--rule);border-radius:2px;display:flex;flex-direction:column;box-shadow:0 18px 40px rgba(0,0,0,.18)}
+.ac button{appearance:none;background:transparent;border:0;border-bottom:1px solid var(--rule-soft);cursor:pointer;
+  text-align:left;font-family:var(--sans);font-size:14px;color:var(--ink);padding:12px 14px}
+.ac button:last-child{border-bottom:0}
+.ac button:hover{background:var(--ground)}
