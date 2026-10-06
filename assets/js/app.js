@@ -60,6 +60,94 @@ function removePlace(id){
   saveAdded(); delete STATUS[id]; saveStatus();
 }
 
+/* ===========================================================
+   ENTRIES — things to do, places to eat and notes that YOU
+   write in the browser. Nothing here needs a code change.
+   Text lives in localStorage; photos live in IndexedDB, which
+   has room for far more than localStorage would.
+   =========================================================== */
+const ENT_KEY = 'meridian-entries';
+let ENTRIES = {};
+try { ENTRIES = JSON.parse(localStorage.getItem(ENT_KEY) || '{}'); } catch(e){ ENTRIES = {}; }
+const saveEntries = () => { try { localStorage.setItem(ENT_KEY, JSON.stringify(ENTRIES)); } catch(e){
+  alert('Your browser would not save that — you may be out of local storage.'); } };
+
+let PHOTO_DB = null;
+function photoDB(){
+  if (PHOTO_DB) return PHOTO_DB;
+  PHOTO_DB = new Promise((res,rej)=>{
+    if (!window.indexedDB) return rej(new Error('no indexeddb'));
+    const r = indexedDB.open('meridian-photos', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('photos');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return PHOTO_DB;
+}
+async function photoPut(id, dataURL){
+  const db = await photoDB();
+  return new Promise((res,rej)=>{ const t = db.transaction('photos','readwrite');
+    t.objectStore('photos').put(dataURL, id); t.oncomplete = res; t.onerror = ()=>rej(t.error); });
+}
+async function photoGet(id){
+  const db = await photoDB();
+  return new Promise((res,rej)=>{ const t = db.transaction('photos','readonly');
+    const q = t.objectStore('photos').get(id); q.onsuccess = ()=>res(q.result); q.onerror = ()=>rej(q.error); });
+}
+async function photoDel(id){
+  try { const db = await photoDB();
+    const t = db.transaction('photos','readwrite'); t.objectStore('photos').delete(id); } catch(e){}
+}
+/* shrink on the way in so a phone photo does not eat the quota */
+function readPhoto(file){
+  return new Promise((res,rej)=>{
+    const fr = new FileReader();
+    fr.onerror = rej;
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = rej;
+      img.onload = () => {
+        const max = 1600, k = Math.min(1, max/Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width*k); cv.height = Math.round(img.height*k);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        res(cv.toDataURL('image/jpeg', 0.82));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+async function paintPhotos(){
+  const imgs = [...document.querySelectorAll('img[data-photo]')];
+  for (const el of imgs){
+    try { const d = await photoGet(el.dataset.photo); if (d) el.src = d; } catch(e){}
+  }
+}
+
+const seedEntries = (scope, kind) => {
+  const c = CITY_BY_KEY[scope];
+  if (!c) return [];
+  return kind === 'todo'
+    ? c.todo.map(t=>({id:t.id, t:t.title, d:t.desc, g:t.tag, ph:[]}))
+    : c.eat.map(e=>({id:e.id, t:e.name, d:e.note||'', g:e.cuisine||'', ph:[]}));
+};
+const entriesOf = (scope, kind) => {
+  const k = scope+'|'+kind;
+  return ENTRIES[k] ? ENTRIES[k] : seedEntries(scope, kind);
+};
+function mutateEntries(scope, kind, fn){
+  const k = scope+'|'+kind;
+  if (!ENTRIES[k]) ENTRIES[k] = seedEntries(scope, kind);
+  fn(ENTRIES[k]);
+  saveEntries();
+}
+const noteOf = scope => ENTRIES[scope+'|note'] || '';
+function setNote(scope, text){
+  if (text) ENTRIES[scope+'|note'] = text; else delete ENTRIES[scope+'|note'];
+  saveEntries();
+}
+
 /* ---------- been / want to go / no mark ---------- */
 const STORE_KEY = 'meridian-status';
 let STATUS = {};
@@ -235,21 +323,25 @@ async function offerFile(filename, text){
 }
 const mark = id => statusOf(id).toUpperCase();
 function cityRows(c){
-  const at = ', '+c.name+', '+c.state.name;
-  const rows = [[c.name+' — city centre', c.name+', '+c.state.name, 'CITY', mark(c.id), '']];
-  c.todo.forEach(t=>rows.push([t.title, t.title+at, t.tag, mark(t.id), t.desc]));
-  c.eat.forEach(e=>rows.push([e.name, e.name+at, 'RESTAURANT', mark(e.id), e.note||'']));
-  return rows;
+  const where = c.name+', '+c.state.name;
+  return [[c.name+' — city centre', where, 'CITY', mark(c.id), noteOf(c.key)]]
+    .concat(entryRows(c.key,'todo',where,'THING TO DO'), entryRows(c.key,'eat',where,'RESTAURANT'));
+}
+function placeRows(a){
+  const co = CO_BY_SLUG[a.c] || {name:''};
+  const where = a.n+', '+co.name;
+  return [[a.n, where, a.k.toUpperCase(), mark(a.id), noteOf(a.id)]]
+    .concat(entryRows(a.id,'todo',where,'THING TO DO'), entryRows(a.id,'eat',where,'RESTAURANT'));
 }
 function stateRows(st){
   const rows = [];
   st.statewide.forEach(p=>rows.push([p.title, p.title+', '+st.name, p.tag, mark(p.id), p.desc]));
-  st.cities.filter(c=>statusOf(c.id)!=='none' || c.todo.length).forEach(c=>rows.push(...cityRows(c)));
+  st.cities.filter(c=>statusOf(c.id)!=='none' || entriesOf(c.key,'todo').length).forEach(c=>rows.push(...cityRows(c)));
   return rows;
 }
 function countryRows(co){
-  const rows = [[co.capital+' — capital', co.capital+', '+co.name, 'CAPITAL', mark(co.id), '']];
-  addedFor(co.slug).forEach(a=>rows.push([a.n, a.n+', '+co.name, a.k.toUpperCase(), mark(a.id), '']));
+  const rows = [[co.capital+' — capital', co.capital+', '+co.name, 'CAPITAL', mark(co.id), noteOf(co.id)]];
+  addedFor(co.slug).forEach(a=>rows.push(...placeRows(a)));
   return rows;
 }
 function worldRows(){
@@ -265,6 +357,7 @@ document.addEventListener('click', e=>{
   if (p[0] === 'city'){ const c = CITY_BY_KEY[p[1]]; offerFile(c.slug+'-places.csv', csvOf(cityRows(c))); }
   else if (p[0] === 'state'){ const s = BY_ABBR[p[1]]; offerFile(s.slug+'-places.csv', csvOf(stateRows(s))); }
   else if (p[0] === 'country'){ const c = CO_BY_SLUG[p[1]]; offerFile(c.slug+'-places.csv', csvOf(countryRows(c))); }
+  else if (p[0] === 'place'){ const a = ADDED.find(x=>x.id === b.dataset.dl.slice(6)); offerFile(slug(a.n)+'-places.csv', csvOf(placeRows(a))); }
   else offerFile('meridian-all-places.csv', csvOf(worldRows()));
 });
 
@@ -364,7 +457,8 @@ function worldMap(points, height, view){
       '<circle class="halo'+(p.s==='want'?' w':'')+'" cx="'+p.x.toFixed(2)+'" cy="'+p.y.toFixed(2)+'" r="2.4" data-r="2.4"/>';
     return halo + '<circle class="'+cls+'" cx="'+p.x.toFixed(2)+'" cy="'+p.y.toFixed(2)+'" r="1.1" data-r="1.1"'
       + ' data-href="'+p.h+'"><title>'+esc(p.n)+'</title></circle>'
-      + '<text class="t'+p.t+'" x="'+(p.x+2.4).toFixed(2)+'" y="'+(p.y+0.9).toFixed(2)+'" font-size="2.6" data-fs="2.6">'+esc(p.n)+'</text>';
+      + '<text data-px="'+p.x.toFixed(2)+'" data-py="'+p.y.toFixed(2)+'" data-len="'+p.n.length
+      + '" data-tier="'+p.t+'" data-pri="'+(p.s==='been'?0:p.s==='want'?1:2)+'">'+esc(p.n)+'</text>';
   }).join('');
   const v = view || {x:0,y:0,w:360,h:180};
   return '<div class="worldmap" style="height:'+height+'px" data-map="1">'
@@ -384,18 +478,46 @@ function wireMaps(){
       const s = Math.min(r.width/v.w, r.height/v.h);
       return {r, s, ox:(r.width - v.w*s)/2, oy:(r.height - v.h*s)/2};
     };
+    const circles = [...el.querySelectorAll('.pins circle')].map(c=>({el:c, r:parseFloat(c.dataset.r)}));
+    /* labels are drawn strongest-first so that, where two collide, the place
+       you have actually been keeps its name and the empty one loses it */
+    const labels = [...el.querySelectorAll('.pins text')].map(t=>({
+      el:t, px:+t.dataset.px, py:+t.dataset.py, len:+t.dataset.len,
+      tier:+t.dataset.tier, pri:+t.dataset.pri
+    })).sort((a,b)=> a.pri-b.pri || a.tier-b.tier || a.len-b.len);
+
     function paint(){
       v.w = clamp(v.w, 14, 360); v.h = v.w/2;
       v.x = clamp(v.x, -12, 372 - v.w); v.y = clamp(v.y, -12, 192 - v.h);
       svg.setAttribute('viewBox', v.x.toFixed(3)+' '+v.y.toFixed(3)+' '+v.w.toFixed(3)+' '+v.h.toFixed(3));
-      const k = v.w/360;
-      el.querySelectorAll('.pins circle').forEach(c=>c.setAttribute('r', (parseFloat(c.dataset.r)*k).toFixed(3)));
-      el.querySelectorAll('.pins text').forEach(t=>{
-        t.setAttribute('font-size', (parseFloat(t.dataset.fs)*k).toFixed(3));
-        t.setAttribute('x', (parseFloat(t.getAttribute('x'))));
-      });
-      el.classList.toggle('zoom1', v.w < 200);
-      el.classList.toggle('zoom2', v.w < 70);
+      const k = v.w/360;                       // everything that must hold its
+      const fs = 2.9*k, halo = 0.85*k;         // on-screen size scales with the view
+      for (const c of circles) c.el.setAttribute('r', (c.r*k).toFixed(3));
+
+      const placed = [];
+      let shown = 0;
+      for (const L of labels){
+        const vis = L.pri < 2 || (L.tier === 1 ? v.w < 230 : v.w < 55);
+        let ok = vis && shown < 80
+          && L.px > v.x - 4 && L.px < v.x + v.w && L.py > v.y - 2 && L.py < v.y + v.h;
+        if (ok){
+          const x0 = L.px + 2.6*k, y0 = L.py - fs*0.62;
+          const w = L.len*fs*0.56, h = fs*1.1;
+          for (const r of placed){
+            if (x0 < r[2] && x0 + w > r[0] && y0 < r[3] && y0 + h > r[1]){ ok = false; break; }
+          }
+          if (ok){
+            placed.push([x0, y0, x0 + w, y0 + h]);
+            shown++;
+            L.el.setAttribute('x', x0.toFixed(3));
+            L.el.setAttribute('y', (L.py + fs*0.34).toFixed(3));
+            L.el.setAttribute('font-size', fs.toFixed(3));
+            L.el.setAttribute('stroke-width', halo.toFixed(3));
+            L.el.style.opacity = '1';
+          }
+        }
+        if (!ok) L.el.style.opacity = '0';
+      }
     }
     function zoomAt(factor, cx, cy){
       const g = geom();
@@ -449,6 +571,177 @@ function rowsHTML(list){
     + '<p class="row-d">'+esc(t.desc)+'</p><p class="row-note">[ your note ]</p></div>'
     + '<span class="row-tags">'+(t.tag?tag(t.tag):'')+ctl(t.id, t.title)+'</span></div>').join('');
 }
+/* ===========================================================
+   THE ENTRY EDITOR — add, describe, illustrate, reorder,
+   delete. All of it in the browser, none of it in the code.
+   =========================================================== */
+const PENDING = {};
+const edKey = (scope, kind) => scope+'|'+kind;
+function photoStrip(ids){
+  if (!ids || !ids.length) return '';
+  return '<span class="photos">'+ids.map(id=>
+    '<button class="ph" type="button" data-light="'+id+'"><img data-photo="'+id+'" alt=""></button>').join('')+'</span>';
+}
+function editorHTML(key, kind){
+  const p = PENDING[key];
+  const open = !!p;
+  const prev = !open ? '' : (p.keep.map(id=>
+      '<span class="pv"><img data-photo="'+id+'" alt=""><button type="button" data-dropph="'+key+'|k|'+id+'">×</button></span>').join('')
+    + p.add.map((d,i)=>'<span class="pv"><img src="'+d+'" alt=""><button type="button" data-dropph="'+key+'|n|'+i+'">×</button></span>').join(''));
+  return '<div class="editor'+(open?'':' shut')+'" data-ed="'+key+'">'
+    + '<input class="f-t" type="text" placeholder="'+(kind==='todo'?'What is it called?':'Restaurant name')+'" value="'+(open?esc(p.t):'')+'">'
+    + '<textarea class="f-d" rows="3" placeholder="'+(kind==='todo'?'Describe it — what it is, when to go, what you thought':'What you ordered, and whether it was worth it')+'">'+(open?esc(p.d):'')+'</textarea>'
+    + '<input class="f-g" type="text" placeholder="'+(kind==='todo'?'Tag — OUTDOORS, MUSEUM, FREE':'Cuisine — RAMEN, BARBECUE')+'" value="'+(open?esc(p.g):'')+'">'
+    + '<span class="prev">'+prev+'</span>'
+    + '<span class="edrow"><label class="filebtn">Add photos<input type="file" accept="image/*" multiple data-pick="'+key+'"></label>'
+    + '<button class="btn" data-save="'+key+'">Save</button>'
+    + '<button class="btn ghost" data-cancel="'+key+'">Cancel</button></span></div>';
+}
+function entrySection(scope, kind, heading, emptyMsg){
+  const list = entriesOf(scope, kind), key = edKey(scope, kind);
+  const rows = list.map((e,i)=>'<div class="row">'
+    + '<span class="row-n">'+pad2(i+1)+'</span>'
+    + '<div class="row-b"><span class="row-t">'+esc(e.t)+'</span>'
+    + (e.d ? '<p class="row-d">'+esc(e.d)+'</p>' : '')
+    + photoStrip(e.ph)+'</div>'
+    + '<span class="row-tags">'+(e.g?tag(e.g):'')+ctl(e.id, e.t)
+    + '<span class="tools">'
+    + '<button class="tbtn" data-mv="'+key+'|'+i+'|-1"'+(i===0?' disabled':'')+' aria-label="Move up">↑</button>'
+    + '<button class="tbtn" data-mv="'+key+'|'+i+'|1"'+(i===list.length-1?' disabled':'')+' aria-label="Move down">↓</button>'
+    + '<button class="tbtn" data-edit="'+key+'|'+e.id+'">EDIT</button>'
+    + '<button class="tbtn" data-del="'+key+'|'+e.id+'">DELETE</button>'
+    + '</span></span></div>').join('');
+  return '<div class="sec">'+secHead(heading, pad2(list.length)+' LISTED')
+    + (list.length ? rows : blank('Nothing here yet', emptyMsg))
+    + editorHTML(key, kind)
+    + (PENDING[key] ? '' : '<div style="padding-top:22px"><button class="btn ghost" data-new="'+key+'">'
+      + '+ Add '+(kind==='todo'?'a thing to do':'a place you ate')+'</button></div>')
+    + '</div>';
+}
+function noteSection(scope){
+  const key = scope+'|note', open = !!PENDING[key], note = noteOf(scope);
+  if (open) return '<div class="editor" data-ed="'+key+'">'
+    + '<textarea class="f-d" rows="3" placeholder="A line or two about this place">'+esc(PENDING[key].d)+'</textarea>'
+    + '<span class="edrow"><button class="btn" data-save="'+key+'">Save</button>'
+    + '<button class="btn ghost" data-cancel="'+key+'">Cancel</button></span></div>';
+  return note
+    ? '<p class="lede" style="padding-top:4px">'+esc(note)+' <button class="tbtn" data-note="'+key+'">EDIT</button></p>'
+    : '<p style="padding-top:4px"><button class="btn ghost" data-note="'+key+'">+ Write a description</button></p>';
+}
+function entryRows(scope, kind, where, cat){
+  return entriesOf(scope, kind).map(e=>[e.t, e.t+', '+where, e.g || cat, mark(e.id), e.d || '']);
+}
+async function savePhotos(list){
+  const ids = [];
+  for (const d of list){
+    const id = 'ph_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);
+    try { await photoPut(id, d); ids.push(id); } catch(e){}
+  }
+  return ids;
+}
+document.addEventListener('change', async e=>{
+  const pick = e.target.closest('[data-pick]');
+  if (!pick) return;
+  const key = pick.dataset.pick;
+  if (!PENDING[key]) return;
+  const ed = pick.closest('.editor');
+  PENDING[key].t = ed.querySelector('.f-t') ? ed.querySelector('.f-t').value : PENDING[key].t;
+  PENDING[key].d = ed.querySelector('.f-d').value;
+  PENDING[key].g = ed.querySelector('.f-g') ? ed.querySelector('.f-g').value : '';
+  for (const f of [...pick.files]){
+    try { PENDING[key].add.push(await readPhoto(f)); } catch(err){}
+  }
+  rerender();
+});
+document.addEventListener('click', async e=>{
+  const grab = ed => {
+    const box = ed.closest('.editor');
+    const t = box.querySelector('.f-t'), d = box.querySelector('.f-d'), g = box.querySelector('.f-g');
+    return {t: t?t.value.trim():'', d: d?d.value.trim():'', g: g?g.value.trim():''};
+  };
+  const nw = e.target.closest('[data-new]');
+  if (nw){ PENDING[nw.dataset.new] = {t:'', d:'', g:'', keep:[], add:[], id:null}; return rerender(); }
+
+  const ed = e.target.closest('[data-edit]');
+  if (ed){
+    const [scope, kind, id] = ed.dataset.edit.split('|');
+    const key = scope+'|'+kind;
+    const it = entriesOf(scope, kind).find(x=>x.id === id);
+    PENDING[key] = {t:it.t, d:it.d||'', g:it.g||'', keep:(it.ph||[]).slice(), add:[], id};
+    return rerender();
+  }
+  const nt = e.target.closest('[data-note]');
+  if (nt){ const key = nt.dataset.note; PENDING[key] = {d:noteOf(key.split('|')[0]), keep:[], add:[]}; return rerender(); }
+
+  const cancel = e.target.closest('[data-cancel]');
+  if (cancel){ delete PENDING[cancel.dataset.cancel]; return rerender(); }
+
+  const drop = e.target.closest('[data-dropph]');
+  if (drop){
+    const [scope, kind, which, val] = drop.dataset.dropph.split('|');
+    const key = scope+'|'+kind, p = PENDING[key];
+    const box = drop.closest('.editor');
+    Object.assign(p, grab(drop));
+    if (which === 'k'){ p.keep = p.keep.filter(x=>x !== val); photoDel(val); }
+    else p.add.splice(+val, 1);
+    return rerender();
+  }
+  const save = e.target.closest('[data-save]');
+  if (save){
+    const key = save.dataset.save, p = PENDING[key];
+    const bits = key.split('|'), kind = bits.pop(), scope = bits.join('|');
+    const vals = grab(save);
+    if (kind === 'note'){ setNote(scope, vals.d); delete PENDING[key]; return rerender(); }
+    if (!vals.t){ save.closest('.editor').querySelector('.f-t').focus(); return; }
+    const fresh = await savePhotos(p.add);
+    const ph = p.keep.concat(fresh);
+    mutateEntries(scope, kind, list=>{
+      if (p.id){
+        const it = list.find(x=>x.id === p.id);
+        if (it){ it.t = vals.t; it.d = vals.d; it.g = vals.g; it.ph = ph; return; }
+      }
+      let id = kind+':'+scope+':'+slug(vals.t), n = 1;
+      while (list.some(x=>x.id === id)) id = kind+':'+scope+':'+slug(vals.t)+'-'+(++n);
+      list.push({id, t:vals.t, d:vals.d, g:vals.g, ph});
+    });
+    delete PENDING[key];
+    return rerender();
+  }
+  const mv = e.target.closest('[data-mv]');
+  if (mv){
+    const [scope, kind, i, dir] = mv.dataset.mv.split('|');
+    mutateEntries(scope, kind, list=>{
+      const a = +i, b = a + (+dir);
+      if (b < 0 || b >= list.length) return;
+      const t = list[a]; list[a] = list[b]; list[b] = t;
+    });
+    return rerender();
+  }
+  const del = e.target.closest('[data-del]');
+  if (del){
+    const [scope, kind, id] = del.dataset.del.split('|');
+    const it = entriesOf(scope, kind).find(x=>x.id === id);
+    if (!confirm('Delete “'+(it?it.t:'this')+'”?')) return;
+    (it && it.ph || []).forEach(photoDel);
+    mutateEntries(scope, kind, list=>{
+      const i = list.findIndex(x=>x.id === id);
+      if (i > -1) list.splice(i, 1);
+    });
+    delete STATUS[id]; saveStatus();
+    return rerender();
+  }
+  const light = e.target.closest('[data-light]');
+  if (light){
+    const d = await photoGet(light.dataset.light);
+    if (!d) return;
+    const box = document.createElement('div');
+    box.className = 'lightbox';
+    box.innerHTML = '<img src="'+d+'" alt=""><button type="button" aria-label="Close">×</button>';
+    box.addEventListener('click', ()=>box.remove());
+    document.body.appendChild(box);
+  }
+});
+
 function placeCard(o){
   const s = o.status;
   return '<div class="card'+(s==='none'?' empty':'')+(s==='want'?' wish':'')+'" style="min-height:'+(o.min||168)+'px">'
@@ -638,32 +931,53 @@ function viewCountry(co){
   const sug = SUGGEST[co.slug] || [[],[]];
   const mine = addedFor(co.slug);
   const have = new Set(mine.map(a=>a.id));
-  const sugList = (list, kind) => list.map(r=>{
-    const [n, lat, lon, tz] = r, id = addedId(co.slug, kind, n), inList = have.has(id);
-    return '<span class="sug'+(inList?' in':'')+'"><span>'+esc(n)+'</span>'
-      + (inList ? '<button type="button" data-rm="'+id+'" aria-label="Remove '+esc(n)+'">×</button>'
-                : '<button type="button" data-add="'+esc(n)+'" data-co="'+co.slug+'" data-kind="'+kind+'" data-lat="'+lat+'" data-lon="'+lon+'"'
-                  + (tz?' data-tz="'+tz+'"':'')+' aria-label="Add '+esc(n)+'">+</button>')+'</span>';
+  const sugList = list => list.map(r=>{
+    const [n, lat, lon] = r, id = addedId(co.slug, 'region', n);
+    if (have.has(id)) return '';
+    return '<span class="sug"><span>'+esc(n)+'</span>'
+      + '<button type="button" data-add="'+esc(n)+'" data-co="'+co.slug+'" data-kind="region" data-lat="'+lat
+      + '" data-lon="'+lon+'" aria-label="Add '+esc(n)+'">+</button></span>';
   }).join('');
 
-  const mineHTML = mine.length ? mine.map(a=>{
-    const night = isNightAt(a.lat, a.lon);
-    return '<div class="added"><span class="added-n">'+pinFor(statusOf(a.id))+esc(a.n)
+  const mineHTML = mine.length ? mine.map(a=>
+    '<div class="added"><span class="added-n">'+pinFor(statusOf(a.id))
+      + '<a href="'+placeHref(a)+'" style="color:var(--ink)">'+esc(a.n)+'</a>'
       + '<span class="lab-s">'+(a.k==='city'?'CITY':'REGION')+'</span></span>'
-      + '<span class="mono" style="font-size:13px;display:flex;align-items:center;gap:8px">'
-      + (night?'<span class="nightdot"></span>':'')+'<span data-tz="'+a.tz+'">'+fmtTime(new Date(),a.tz)+'</span></span>'
-      + ctl(a.id, a.n)+'<button class="rm" data-rm="'+a.id+'">REMOVE</button></div>';
-  }).join('') : blank('Nothing added yet','Pick from the suggestions below and they land here, with their own clock, a been/want mark and a pin on the world map.');
+      + ctl(a.id, a.n)+'<button class="rm" data-rm="'+a.id+'">REMOVE</button></div>').join('')
+    : blank('Nothing added yet','Type a place below, or take one of the suggested regions. Each gets its own page with a clock, a description, things to do and where you ate.');
 
   return head + hero + '<div class="wrap">'
-    + '<div class="sec">'+secHead('Your places in '+esc(co.name), pad2(mine.length))+mineHTML+'</div>'
-    + (sug[0].length ? '<div class="sec">'+secHead('Regions', 'CLICK TO ADD · '+sug[0].length+' SUGGESTED')
-        + '<div class="sugs">'+sugList(sug[0],'region')+'</div></div>' : '')
-    + (sug[1].length ? '<div class="sec">'+secHead('Major cities', 'CLICK TO ADD · '+sug[1].length+' SUGGESTED')
-        + '<div class="sugs">'+sugList(sug[1],'city')+'</div></div>' : '')
-    + '<div class="sec">'+secHead('Things to do','00 LOGGED')
-    + blank('Nothing logged for '+esc(co.name)+' yet','Add entries to the TODO list in data.js, keyed to a place you have added above.')
-    + '</div></div>';
+    + '<div class="sec">'+secHead('Your places in '+esc(co.name), pad2(mine.length))+mineHTML
+    + '<div class="addbox"><label class="hidden" for="newplace">Add a place</label>'
+    + '<input id="newplace" type="text" autocomplete="off" placeholder="Add a place in '+esc(co.name)+'…" data-place-co="'+co.slug+'">'
+    + '<button class="btn" data-place-go="'+co.slug+'">Add</button><span class="ac hidden" id="placeac"></span></div>'
+    + '<p class="note" style="padding-top:10px">Start typing and known cities fill in with their own coordinates and timezone. Anything else is added at '+esc(co.capital)+'\u2019s position, and you can still describe it and photograph it.</p></div>'
+    + (sug[0].length ? '<div class="sec">'+secHead('Regions of '+esc(co.name), 'CLICK TO ADD')
+        + '<div class="sugs">'+sugList(sug[0])+'</div></div>' : '')
+    + '</div>';
+}
+
+/* ---------- a place you added yourself ---------- */
+const placeHref = a => '#/'+a.cont+'/'+a.c+'/'+slug(a.n);
+function viewPlace(a, co){
+  const ro = readout(a.id, a.lat, a.lon, a.tz);
+  routeIsNight = ro.night;
+  const todo = entriesOf(a.id,'todo'), eat = entriesOf(a.id,'eat');
+  return crumbs([['World','#/continents'],[co.continent.name, contHref(co.continent)],[co.name, countryHref(co)],[a.n,'']])
+  + '<div class="wrap"><div style="padding-top:36px"><div class="hero"><div class="hero-main">'
+  + '<h1 class="title-xl">'+esc(a.n)+'</h1>'
+  + '<span class="lab">'+esc(co.name).toUpperCase()+' · '+(a.k==='city'?'CITY':'REGION')+' · '+coord(a.lat,a.lon)+'</span>'
+  + ro.html
+  + '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">'+ctl(a.id, a.n)
+  + '<span class="chip warm">'+glyph(ro.night?'night':'clear',14)+(ro.night?'IT IS NIGHT IN ':'IT IS DAYTIME IN ')+esc(a.n).toUpperCase()+'</span></div>'
+  + noteSection(a.id)
+  + '</div><div class="hero-side"><div class="board"><div class="board-h"><span class="lab">SAVED PLACES</span>'
+  + '<span class="lab-s">'+pad2(todo.length+eat.length)+'</span></div>'
+  + '<div style="padding:18px"><p class="note" style="margin-bottom:14px">Everything on this page as one CSV for Google My Maps.</p>'
+  + '<button class="btn" data-dl="place:'+a.id+'">'+ICON.down+slug(a.n)+'-places.csv</button></div></div></div></div></div>'
+  + entrySection(a.id, 'todo', 'Things to do', 'Add the first one — give it a description and as many photos as you like.')
+  + entrySection(a.id, 'eat', 'Where I ate', 'Nothing eaten here on the record yet.')
+  + '<div class="pagenav"><a href="'+countryHref(co)+'"><span class="lab-s">← BACK TO</span><span class="nt">'+esc(co.name)+'</span></a></div></div>';
 }
 
 /* ---------- state ---------- */
@@ -698,9 +1012,10 @@ function viewCity(c){
   const idx = c.state.cities.indexOf(c);
   const prev = c.state.cities[(idx-1+c.state.cities.length)%c.state.cities.length];
   const next = c.state.cities[(idx+1)%c.state.cities.length];
-  const places = c.todo.length
+  const todo = entriesOf(c.key,'todo'), eat = entriesOf(c.key,'eat');
+  const places = todo.length
     ? '<div class="places"><div class="places-l">'
-      + c.todo.map(t=>'<a href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(t.title+', '+c.name+', '+c.state.name)+'" target="_blank" rel="noopener">'+pinFor(statusOf(t.id))+esc(t.title)+'</a>').join('')
+      + todo.map(t=>'<a href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(t.t+', '+c.name+', '+c.state.name)+'" target="_blank" rel="noopener">'+pinFor(statusOf(t.id))+esc(t.t)+'</a>').join('')
       + '</div><div class="places-r"><span class="note">Each name opens in Google Maps. The CSV carries all of them, and your marks, in one import.</span></div></div>'
     : '';
   return crumbs([['World','#/continents'],[HOME_CONT.name, contHref(HOME_CONT)],[USA.name, countryHref(USA)],[c.state.name, stateHref(c.state)],[c.name,'']])
@@ -710,19 +1025,14 @@ function viewCity(c){
   + ro.html
   + '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">'+ctl(c.id, c.name)
   + '<span class="chip warm">'+glyph(ro.night?'night':'clear',14)+(ro.night?'IT IS NIGHT IN ':'IT IS DAYTIME IN ')+esc(c.name).toUpperCase()+'</span></div>'
+  + noteSection(c.key)
   + '<p class="note">The page follows this city\u2019s clock, not yours — override it with the control up top.</p></div>'
   + '<div class="hero-side"><div class="board"><div class="board-h"><span class="lab">SAVED PLACES</span>'
-  + '<span class="lab-s">'+pad2(c.todo.length+c.eat.length)+'</span></div>'
+  + '<span class="lab-s">'+pad2(todo.length+eat.length)+'</span></div>'
   + '<div style="padding:18px"><p class="note" style="margin-bottom:14px">One CSV with every pin on this page, ready for Google My Maps.</p>'
   + '<button class="btn" data-dl="city:'+c.key+'">'+ICON.down+c.slug+'-places.csv</button></div></div></div></div></div>'
-  + '<div class="sec">'+secHead('Things to do', pad2(c.todo.length)+' LISTED')
-  + (c.todo.length ? rowsHTML(c.todo) : blank('Nothing logged here yet','Add entries for this city to TODO in data.js.'))+'</div>'
-  + '<div class="sec">'+secHead('Where I ate', pad2(c.eat.length)+' LOGGED')
-  + (c.eat.length
-    ? '<div class="grid g-wide" style="padding-top:28px">'+c.eat.map(e=>'<div class="card" style="justify-content:flex-start;gap:12px;min-height:0">'
-      + '<span class="lab-s">'+esc(e.cuisine||'')+'</span><span class="card-t">'+esc(e.name)+'</span>'
-      + '<p class="row-d">'+esc(e.note||'')+'</p><span class="card-foot">'+ctl(e.id, e.name)+'</span></div>').join('')+'</div>'
-    : blank('No restaurants logged yet','Add them to EAT in data.js — name, cuisine and one line on whether it was worth it.'))+'</div>'
+  + entrySection(c.key, 'todo', 'Things to do', 'Add the first one — give it a description and as many photos as you like.')
+  + entrySection(c.key, 'eat', 'Where I ate', 'Nothing eaten here on the record yet.')
   + (places ? '<div class="sec">'+secHead('On the map','OPENS IN GOOGLE MAPS')+'<div class="panel" style="margin-top:28px">'+places+'</div></div>' : '')
   + '<div class="pagenav">'
   + '<a href="'+cityHref(prev)+'"><span class="lab-s">← PREVIOUS</span><span class="nt">'+esc(prev.name)+'</span></a>'
@@ -760,9 +1070,14 @@ function route(){
     else {
       const co = ct.countries.find(c=>c.slug === parts[1]);
       if (!co) html = viewMissing();
-      else if (parts.length === 2 || !co.detailed){
+      else if (parts.length === 2){
         html = viewCountry(co); title = co.name+' — Meridian'; foot = co.tz.toUpperCase().replace(/_/g,' ');
         points = [{key:'co-'+co.slug, lat:co.lat, lon:co.lon}];
+      } else if (!co.detailed){
+        const a = addedFor(co.slug).find(x=>slug(x.n) === parts[2]);
+        if (!a) html = viewMissing();
+        else { html = viewPlace(a, co); title = a.n+' — Meridian'; foot = a.tz.toUpperCase().replace(/_/g,' ');
+          points = [{key:a.id, lat:a.lat, lon:a.lon}]; }
       } else {
         const st = BY_ABBR[parts[2]];
         if (!st) html = viewMissing();
@@ -783,9 +1098,48 @@ function route(){
   document.getElementById('footnote').textContent = foot;
   document.querySelectorAll('.navlinks a[data-nav]').forEach(a=>
     a.classList.toggle('on', a.dataset.nav === (first || 'home')));
-  applyTheme(); tick(); wireMaps();
+  applyTheme(); tick(); wireMaps(); paintPhotos(); wireAddBox();
   loadWeather(points);
   lastRoute = raw;
+}
+/* the add-a-place box: known cities fill themselves in */
+function wireAddBox(){
+  const box = document.getElementById('newplace');
+  if (!box) return;
+  const co = CO_BY_SLUG[box.dataset.placeCo];
+  const ac = document.getElementById('placeac');
+  const pool = (SUGGEST[co.slug] || [[],[]])[1] || [];
+  const taken = new Set(addedFor(co.slug).map(a=>a.id));
+  const match = () => {
+    const q = box.value.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return pool.filter(r=>r[0].toLowerCase().includes(q) && !taken.has(addedId(co.slug,'city',r[0]))).slice(0,7);
+  };
+  const commit = row => {
+    const name = row ? row[0] : box.value.trim();
+    if (!name) return;
+    if (row) addPlace(co.slug, 'city', row[0], row[1], row[2], row[3]);
+    else addPlace(co.slug, 'city', name, co.lat, co.lon, co.tz);
+    box.value = ''; rerender();
+  };
+  box.addEventListener('input', ()=>{
+    const hits = match();
+    if (!hits.length){ ac.classList.add('hidden'); return; }
+    ac.innerHTML = hits.map((r,i)=>'<button type="button" data-i="'+i+'">'+esc(r[0])+'</button>').join('');
+    ac.classList.remove('hidden');
+    [...ac.children].forEach((b,i)=>b.addEventListener('click', ()=>commit(hits[i])));
+  });
+  box.addEventListener('keydown', e=>{
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const hits = match();
+    commit(hits.find(r=>r[0].toLowerCase() === box.value.trim().toLowerCase()) || hits[0] || null);
+  });
+  const go = document.querySelector('[data-place-go]');
+  if (go) go.addEventListener('click', ()=>{
+    const hits = match();
+    commit(hits.find(r=>r[0].toLowerCase() === box.value.trim().toLowerCase()) || hits[0] || null);
+  });
 }
 const boardPoints = () => BOARD.map((b,i)=>({key:'board'+i, lat:b[2], lon:b[3]}));
 function tick(){
