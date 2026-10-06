@@ -217,49 +217,19 @@ const EAT = {};
 const COUNTRY_TODO = [];
 const CONTINENT_TODO = [];
 
-/* ===========================================================
-   THE WORLD — continents and the countries under them.
-   Add a country by adding its name to the list. Every country
-   gets its own page, whether or not anything is logged on it.
-   =========================================================== */
-const WORLD = [
-["North America","Blue Ridge to the Rio Grande, and everything that drains into the Gulf.",[
- "United States","Canada","Mexico","Guatemala","Belize","Honduras","El Salvador","Nicaragua","Costa Rica","Panama",
- "Cuba","Jamaica","Dominican Republic","Haiti","Puerto Rico","Bahamas","Barbados","Trinidad and Tobago",
- "Saint Lucia","Antigua and Barbuda","Grenada","Aruba","Curacao","Bermuda","Greenland"]],
-["South America","The Andes down one side, the Amazon across the middle.",[
- "Brazil","Argentina","Chile","Peru","Bolivia","Ecuador","Colombia","Venezuela","Uruguay","Paraguay",
- "Guyana","Suriname","French Guiana"]],
-["Europe","Short distances, long histories, very good trains.",[
- "United Kingdom","Ireland","France","Spain","Portugal","Italy","Germany","Netherlands","Belgium","Luxembourg",
- "Switzerland","Austria","Czechia","Poland","Hungary","Slovakia","Slovenia","Croatia","Bosnia and Herzegovina",
- "Serbia","Montenegro","Albania","North Macedonia","Greece","Bulgaria","Romania","Moldova","Denmark","Sweden",
- "Norway","Finland","Iceland","Estonia","Latvia","Lithuania","Ukraine","Malta","Cyprus","Monaco","Andorra","San Marino"]],
-["Asia","The largest continent, and the one with the most time zones to cross.",[
- "Japan","South Korea","China","Taiwan","Mongolia","Thailand","Vietnam","Cambodia","Laos","Myanmar","Malaysia",
- "Singapore","Indonesia","Philippines","Brunei","India","Sri Lanka","Nepal","Bhutan","Maldives","Pakistan",
- "Bangladesh","United Arab Emirates","Saudi Arabia","Qatar","Bahrain","Kuwait","Oman","Jordan","Israel","Lebanon",
- "Turkey","Georgia","Armenia","Azerbaijan","Uzbekistan","Kazakhstan","Kyrgyzstan","Tajikistan","Turkmenistan"]],
-["Africa","Fifty-four countries, and more ecological range than any other landmass.",[
- "Morocco","Algeria","Tunisia","Libya","Egypt","Sudan","Ethiopia","Eritrea","Djibouti","Somalia","Kenya",
- "Tanzania","Uganda","Rwanda","Burundi","South Africa","Lesotho","Eswatini","Namibia","Botswana","Zimbabwe",
- "Zambia","Malawi","Mozambique","Madagascar","Mauritius","Seychelles","Ghana","Nigeria","Senegal","Gambia",
- "Ivory Coast","Mali","Burkina Faso","Benin","Togo","Cameroon","Gabon","Congo","Democratic Republic of the Congo",
- "Angola","Cape Verde"]],
-["Oceania","Mostly ocean, and the first places on earth to see each new day.",[
- "Australia","New Zealand","Fiji","Papua New Guinea","French Polynesia","Samoa","Tonga","Vanuatu",
- "Solomon Islands","New Caledonia","Cook Islands","Palau","Micronesia","Marshall Islands","Kiribati"]],
-["Antarctica","No permanent residents, and a season that runs November to March.",[
- "Antarctic Peninsula","Ross Sea","South Georgia"]]
-];
 
 /* The only country with states and cities wired up so far. Point this at
    another country later and the state and city levels follow it. */
 const DETAILED_COUNTRY = "United States";
 
-/* Which cities appear on the homepage clock board, which three are
-   featured below the map, and which map pins carry a label. */
-const BOARD = ["NY-new-york-city","IL-chicago","TX-austin","CA-san-francisco"];
+/* The homepage clock board: [ label, under-label, lat, lon, timezone, link ].
+   Any point on earth works here, not just a city in the lists above. */
+const BOARD = [
+ ["Dallas","Texas",32.78,-96.80,"America/Chicago","#/north-america/united-states/tx/dallas-fort-worth"],
+ ["Rome","Italy",41.893,12.482,"Europe/Rome","#/europe/italy"],
+ ["Delhi","India",28.666,77.217,"Asia/Kolkata","#/asia/india"],
+ ["Tokyo","Japan",35.690,139.692,"Asia/Tokyo","#/asia/japan"]
+];
 const FEATURED = ["TX-austin","LA-new-orleans","CA-san-francisco"];
 const LABELLED = new Set(["NY-new-york-city","IL-chicago","TX-austin","CA-san-francisco","CA-san-diego",
   "FL-miami","LA-new-orleans","TN-nashville","DC-washington","WA-seattle","CO-denver","CA-los-angeles"]);
