@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meridian — a personal travel atlas</title>
+<meta name="description" content="A personal travel atlas: every city, state and country, with the local time and weather where each one is.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+<div class="topbar"><div class="wrap topbar-in">
+  <a class="brand" href="#/">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M4.2 7.5h15.6M4.2 16.5h15.6"/></svg>
+    MERIDIAN
+  </a>
+  <nav class="navlinks">
+    <a href="#/north-america">Atlas</a>
+    <a href="#/north-america/united-states">United States</a>
+    <span class="searchwrap">
+      <label for="search" class="hidden">Search places</label>
+      <input id="search" type="search" placeholder="FIND A PLACE" autocomplete="off">
+      <span id="results" class="hidden"></span>
+    </span>
+    <button class="toggle" id="themebtn" type="button" aria-label="Switch between light and dark">
+      <span class="sw"><i></i></span><span id="themelab">AUTO</span>
+    </button>
+  </nav>
+</div></div>
+<main id="app"></main>
+<footer><div class="wrap">
+  <div class="merid"><i></i><b></b><i></i></div>
+  <div class="foot">
+    <a class="mono" href="#/" style="font-size:12px;letter-spacing:.3em;color:var(--ink)">MERIDIAN</a>
+    <span class="lab-s" id="footnote">A PERSONAL TRAVEL ATLAS</span>
+  </div>
+</div></footer>
+<script src="assets/js/data.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

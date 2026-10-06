@@ -1,0 +1,1128 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meridian — a personal travel atlas</title>
+<meta name="description" content="A personal travel atlas: every city, state and country, with the local time and weather where each one is.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --ground:#E9EAE4; --surface:#F3F4EF; --rule:#C8CCC2; --rule-soft:#D5D8CF;
+  --ink:#14181A; --muted:#3F4745; --faint:#6E756F; --ghost:#868C85;
+  --accent:#0E5A61; --accent-hover:#093E43; --warm:#8A5A10;
+  --pin:#8A5A10; --pin-glow:rgba(138,90,16,.14);
+  --btn-fg:#F3F4EF; --btn-bg:#0E5A61;
+  --grain:rgba(0,0,0,.028); --grid:rgba(20,24,26,.06);
+  --serif:'Instrument Serif','Iowan Old Style','Times New Roman',serif;
+  --sans:'Space Grotesk','Helvetica Neue',Helvetica,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --maxw:1180px; --pad:40px;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+html[data-theme="dark"]{
+  --ground:#0B0F14; --surface:#141B23; --rule:#27313A; --rule-soft:#222B34;
+  --ink:#E8ECEA; --muted:#9BA7A8; --faint:#8A969A; --ghost:#68757A;
+  --accent:#58CED4; --accent-hover:#8FE2E6; --warm:#E8B055;
+  --pin:#E8B055; --pin-glow:rgba(232,176,85,.16);
+  --btn-fg:#14110A; --btn-bg:#E8B055;
+  --grain:rgba(255,255,255,.04); --grid:rgba(155,167,168,.08);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px);-webkit-text-size-adjust:100%}
+body{
+  margin:0;font-family:var(--sans);background:var(--ground);color:var(--ink);
+  font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(var(--grain) 1px,transparent 1px);background-size:3px 3px;
+  transition:background-color .45s ease,color .45s ease;
+}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent-hover)}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--warm);outline-offset:3px}
+h1,h2,h3{margin:0;font-family:var(--serif);font-weight:400;letter-spacing:-.015em;text-wrap:pretty}
+p{margin:0;text-wrap:pretty}
+button{font-family:var(--sans)}
+.wrap{max-width:var(--maxw);margin:0 auto;padding-left:var(--pad);padding-right:var(--pad)}
+.mono{font-family:var(--mono)}
+.lab{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--muted)}
+.lab-s{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--muted)}
+.rule{height:1px;background:var(--rule);border:0;margin:0}
+
+/* ---- top bar ---- */
+.topbar{border-bottom:1px solid var(--rule);position:sticky;top:env(safe-area-inset-top,0px);z-index:40;background:var(--ground)}
+.topbar-in{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;letter-spacing:.3em;color:var(--ink);padding:16px 0}
+.brand svg{stroke:var(--warm)}
+.navlinks{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.navlinks a{color:var(--muted);font-size:14px;padding:14px 0}
+.navlinks a:hover{color:var(--ink)}
+.searchwrap{position:relative;padding:8px 0}
+#search{font-family:var(--mono);font-size:12px;background:transparent;color:var(--ink);
+  border:1px solid var(--rule);border-radius:999px;padding:0 14px;height:40px;width:210px;max-width:46vw}
+#search::placeholder{color:var(--ghost)}
+#results{position:absolute;right:0;top:52px;width:300px;max-width:84vw;background:var(--surface);
+  border:1px solid var(--rule);border-radius:2px;overflow:hidden;z-index:60;box-shadow:0 18px 40px rgba(0,0,0,.18)}
+#results a{display:flex;justify-content:space-between;gap:12px;padding:12px 14px;color:var(--ink);
+  font-size:14px;border-bottom:1px solid var(--rule-soft)}
+#results a:last-child{border-bottom:0}
+#results a:hover{background:var(--ground)}
+#results .r-sub{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--muted);white-space:nowrap}
+.hidden{display:none !important}
+
+/* ---- crumbs ---- */
+.crumbs{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--muted);padding-top:20px;line-height:2}
+.crumbs .here{color:var(--ink)}
+
+/* ---- hero ---- */
+.hero{display:flex;flex-wrap:wrap;gap:56px;align-items:flex-end}
+.hero-main{flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:24px}
+.hero-side{flex:1 1 340px;min-width:0}
+.title-xl{font-size:clamp(52px,8.6vw,104px);line-height:.94;letter-spacing:-.025em}
+.title-l{font-size:clamp(38px,5.4vw,56px);line-height:1}
+.h2{font-size:clamp(32px,4.2vw,46px);line-height:1.02}
+.lede{max-width:52ch;font-size:17px;line-height:1.62;color:var(--muted)}
+
+/* ---- readout strip ---- */
+.readout{display:flex;flex-wrap:wrap;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.ro{display:flex;flex-direction:column;gap:8px;padding:20px 32px;border-right:1px solid var(--rule)}
+.ro:first-child{padding-left:0}
+.ro:last-child{border-right:0}
+.ro-v{font-family:var(--mono);font-size:clamp(22px,3vw,30px);line-height:1}
+.ro-sun{font-family:var(--mono);font-size:14px;line-height:1.55}
+.sky{display:flex;align-items:center;gap:10px;color:var(--warm)}
+.sky .ro-v{color:var(--ink)}
+
+/* ---- chips & buttons ---- */
+.chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;
+  letter-spacing:.1em;border:1px solid var(--rule);border-radius:999px;padding:7px 12px;color:var(--muted)}
+.chip.warm{color:var(--warm)}
+.chip.on{color:var(--accent)}
+.btn{display:inline-flex;align-items:center;gap:9px;font-size:14px;font-weight:600;border:0;border-radius:2px;
+  background:var(--btn-bg);color:var(--btn-fg);padding:0 20px;min-height:46px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule);font-weight:500}
+.btn:hover{filter:brightness(1.07)}
+.toggle{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+  color:var(--muted);background:transparent;border:1px solid var(--rule);border-radius:999px;padding:0 14px;min-height:44px;cursor:pointer}
+.sw{width:26px;height:15px;border-radius:999px;background:var(--rule);display:flex;align-items:center;padding:2px}
+.sw i{width:11px;height:11px;border-radius:999px;background:var(--surface);display:block;transition:transform .25s ease}
+html[data-theme="dark"] .sw{background:var(--warm)}
+html[data-theme="dark"] .sw i{background:#14110A;transform:translateX(11px)}
+
+/* ---- sections ---- */
+.sec{padding-top:84px}
+.sec-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:14px;
+  padding-bottom:26px;border-bottom:1px solid var(--ink)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:24px;
+  border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:36px 0}
+.stat-n{font-family:var(--serif);font-size:clamp(40px,5vw,58px);line-height:1}
+
+/* ---- entry rows ---- */
+.row{display:flex;flex-wrap:wrap;gap:24px;padding:28px 0;border-bottom:1px solid var(--rule)}
+.row-n{font-family:var(--mono);font-size:13px;color:var(--warm);width:30px;flex:0 0 auto;padding-top:8px}
+.row-b{flex:999 1 400px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.row-t{font-family:var(--serif);font-size:clamp(24px,3vw,30px);line-height:1.1}
+.row-d{font-size:15px;line-height:1.6;color:var(--muted)}
+.row-note{font-size:15px;line-height:1.6;color:var(--faint);font-style:italic}
+.row-tags{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;padding-top:6px}
+
+/* ---- cards ---- */
+.grid{display:grid;gap:20px}
+.g-cities{grid-template-columns:repeat(auto-fit,minmax(min(262px,100%),1fr))}
+.g-wide{grid-template-columns:repeat(auto-fit,minmax(min(310px,100%),1fr))}
+.card{display:flex;flex-direction:column;justify-content:space-between;gap:20px;min-height:180px;
+  background:var(--surface);border:1px solid var(--rule-soft);border-radius:2px;padding:22px;color:var(--ink);
+  transition:border-color .2s ease,transform .2s ease}
+.card:hover{border-color:var(--pin);transform:translateY(-2px);color:var(--ink)}
+.card.empty{background:transparent;border:1px dashed var(--rule);justify-content:flex-end}
+.card.empty:hover{transform:none;border-color:var(--rule)}
+.card-t{font-family:var(--serif);font-size:30px;line-height:1.05}
+.card.empty .card-t{color:var(--faint)}
+.pin{width:10px;height:10px;border-radius:999px;background:var(--pin);box-shadow:0 0 0 5px var(--pin-glow);flex:0 0 auto}
+.pin.off{background:transparent;border:1px solid var(--ghost);box-shadow:none}
+.card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+
+/* ---- empty state ---- */
+.blank{display:flex;flex-wrap:wrap;align-items:center;gap:30px;border:1px dashed var(--rule);
+  border-radius:2px;padding:38px;margin-top:28px}
+.blank-b{flex:999 1 340px;min-width:0;display:flex;flex-direction:column;gap:9px}
+
+/* ---- map panel ---- */
+.panel{border:1px solid var(--rule);border-radius:2px;background:var(--surface);overflow:hidden}
+.panel-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;
+  padding:20px 24px;border-bottom:1px solid var(--rule-soft)}
+.plot{position:relative;height:min(58vw,520px);min-height:300px;background:var(--ground);
+  background-image:linear-gradient(to right,var(--grid) 1px,transparent 1px),linear-gradient(to bottom,var(--grid) 1px,transparent 1px);
+  background-size:64px 64px}
+.plot-in{position:absolute;inset:42px 56px}
+.dot{position:absolute;display:flex;align-items:center;gap:8px;transform:translate(-5px,-5px)}
+.dot b{font-family:var(--mono);font-size:10px;letter-spacing:.1em;font-weight:400;color:var(--ink);white-space:nowrap}
+.dot.off b{color:var(--ghost)}
+.places{display:flex;flex-wrap:wrap}
+.places-l{flex:1 1 280px;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--rule-soft)}
+.places-l a,.places-l span{display:flex;align-items:center;gap:12px;padding:15px 24px;border-bottom:1px solid var(--rule-soft);font-size:15px;color:var(--ink)}
+.places-l a:last-child,.places-l span:last-child{border-bottom:0}
+.places-r{flex:999 1 400px;min-width:0;display:flex;align-items:center;justify-content:center;min-height:260px;
+  background:var(--ground);background-image:linear-gradient(to right,var(--grid) 1px,transparent 1px),linear-gradient(to bottom,var(--grid) 1px,transparent 1px);
+  background-size:48px 48px;padding:24px;text-align:center}
+
+/* ---- live board ---- */
+.board{border:1px solid var(--rule);background:var(--surface);border-radius:2px}
+.board-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--rule)}
+.board-r{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;border-bottom:1px solid var(--rule);color:var(--ink)}
+.board-r:last-child{border-bottom:0}
+.board-r:hover{background:var(--ground)}
+.board-city{display:flex;flex-direction:column;gap:3px}
+.board-right{display:flex;align-items:center;gap:14px}
+.board-t{font-family:var(--mono);font-size:16px;width:74px;text-align:right}
+.live{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--accent)}
+.live i{width:6px;height:6px;border-radius:999px;background:var(--accent);display:block;animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ---- page nav + footer ---- */
+.pagenav{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;
+  border-top:1px solid var(--rule);padding-top:24px;margin-top:64px}
+.pagenav a{display:flex;flex-direction:column;gap:5px;padding:8px 0;color:var(--ink)}
+.pagenav .nx{align-items:flex-end;text-align:right}
+.pagenav .nt{font-family:var(--serif);font-size:24px}
+footer{margin-top:72px;border-top:1px solid var(--rule);background:var(--surface)}
+.foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px;padding:34px 0}
+.merid{display:flex;align-items:center;gap:14px;padding-top:30px}
+.merid i{height:1px;background:var(--rule);flex:1 1 auto}
+.merid b{width:7px;height:7px;border-radius:999px;background:var(--warm);display:block}
+.note{font-size:13px;line-height:1.6;color:var(--faint);max-width:74ch}
+
+@media (max-width:640px){
+  :root{--pad:20px}
+  .sec{padding-top:56px}
+  .ro{padding:16px 20px}
+  .readout{flex-direction:column}
+  .ro{border-right:0;border-bottom:1px solid var(--rule);padding-left:0}
+  .ro:last-child{border-bottom:0}
+  .hero{gap:32px}
+  .plot-in{inset:28px 34px}
+  .dot b{display:none}
+}
+
+/* ---- been / want controls ---- */
+:root{--on-accent:#F3F4EF;--accent-glow:rgba(14,90,97,.16)}
+html[data-theme="dark"]{--on-accent:#06252A;--accent-glow:rgba(88,206,212,.20)}
+.statusctl{display:inline-flex;align-items:stretch;border:1px solid var(--rule);border-radius:999px;
+  overflow:hidden;background:var(--ground);position:relative;z-index:2;flex:0 0 auto}
+.statusctl button{appearance:none;background:transparent;border:0;cursor:pointer;font-family:var(--mono);
+  font-size:10px;letter-spacing:.12em;color:var(--muted);padding:0 12px;height:36px;display:inline-flex;
+  align-items:center;gap:6px;white-space:nowrap;transition:background .18s ease,color .18s ease}
+.statusctl button + button{border-left:1px solid var(--rule)}
+.statusctl button:hover{color:var(--ink)}
+.statusctl button.been[aria-pressed="true"]{background:var(--pin);color:var(--btn-fg)}
+.statusctl button.want[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.statusctl svg{flex:0 0 auto}
+.card{position:relative}
+.card .go{position:static;color:inherit}
+.card .go::after{content:"";position:absolute;inset:0;z-index:1}
+.card:hover .card-t{color:var(--ink)}
+.card-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.pin.want{background:var(--accent);box-shadow:0 0 0 5px var(--accent-glow)}
+.dot .pin.want{background:var(--accent);box-shadow:0 0 0 4px var(--accent-glow)}
+.card.wish{border-style:solid;border-color:var(--accent)}
+.row-tags{align-items:center}
+@media (max-width:640px){
+  .statusctl button{padding:0 10px;font-size:9px}
+  .row-tags{width:100%}
+}
+
+</style>
+</head>
+<body>
+<div class="topbar"><div class="wrap topbar-in">
+  <a class="brand" href="#/">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M4.2 7.5h15.6M4.2 16.5h15.6"/></svg>
+    MERIDIAN
+  </a>
+  <nav class="navlinks">
+    <a href="#/north-america">Atlas</a>
+    <a href="#/north-america/united-states">United States</a>
+    <span class="searchwrap">
+      <label for="search" class="hidden">Search places</label>
+      <input id="search" type="search" placeholder="FIND A PLACE" autocomplete="off">
+      <span id="results" class="hidden"></span>
+    </span>
+    <button class="toggle" id="themebtn" type="button" aria-label="Switch between light and dark">
+      <span class="sw"><i></i></span><span id="themelab">AUTO</span>
+    </button>
+  </nav>
+</div></div>
+<main id="app"></main>
+<footer><div class="wrap">
+  <div class="merid"><i></i><b></b><i></i></div>
+  <div class="foot">
+    <a class="mono" href="#/" style="font-size:12px;letter-spacing:.3em;color:var(--ink)">MERIDIAN</a>
+    <span class="lab-s" id="footnote">A PERSONAL TRAVEL ATLAS</span>
+  </div>
+</div></footer>
+<script>
+/* ===========================================================
+   DATA — this is the only part you edit to add places.
+   STATES : [name, abbr, timezone, [ [city, lat, lon, tzOverride?] ... ]]
+   VISITED: "AB-city-slug" keys for places you have been
+   TODO   : things to do, keyed the same way  [title, description, tag]
+   STATEWIDE: parks / regions / falls that belong to no single city
+   EAT    : restaurants, keyed the same way   [name, cuisine, note]
+   =========================================================== */
+const STATES = [
+["Alabama","AL","America/Chicago",[["Birmingham",33.52,-86.80],["Huntsville",34.73,-86.59],["Montgomery",32.38,-86.30],["Mobile",30.69,-88.04]]],
+["Alaska","AK","America/Anchorage",[["Anchorage",61.22,-149.90],["Juneau",58.30,-134.42],["Fairbanks",64.84,-147.72],["Seward",60.10,-149.44]]],
+["Arizona","AZ","America/Phoenix",[["Phoenix",33.45,-112.07],["Tucson",32.22,-110.97],["Sedona",34.87,-111.76],["Flagstaff",35.20,-111.65]]],
+["Arkansas","AR","America/Chicago",[["Little Rock",34.75,-92.29],["Hot Springs",34.50,-93.06],["Fayetteville",36.06,-94.16]]],
+["California","CA","America/Los_Angeles",[["Los Angeles",34.05,-118.24],["San Francisco",37.77,-122.42],["San Diego",32.72,-117.16],["Sacramento",38.58,-121.49],["San Jose",37.34,-121.89],["Santa Barbara",34.42,-119.70],["Monterey",36.60,-121.89],["Palm Springs",33.83,-116.55]]],
+["Colorado","CO","America/Denver",[["Denver",39.74,-104.99],["Colorado Springs",38.83,-104.82],["Boulder",40.01,-105.27],["Aspen",39.19,-106.82]]],
+["Connecticut","CT","America/New_York",[["Hartford",41.76,-72.67],["New Haven",41.31,-72.93],["Mystic",41.35,-71.97]]],
+["Delaware","DE","America/New_York",[["Wilmington",39.74,-75.55],["Dover",39.16,-75.52],["Rehoboth Beach",38.72,-75.08]]],
+["District of Columbia","DC","America/New_York",[["Washington",38.91,-77.04]]],
+["Florida","FL","America/New_York",[["Miami",25.76,-80.19],["Key West",24.56,-81.78],["Tampa",27.95,-82.46],["Sarasota",27.34,-82.53],["Panama City",30.16,-85.66,"America/Chicago"],["Destin",30.39,-86.50,"America/Chicago"],["Tallahassee",30.44,-84.28],["Orlando",28.54,-81.38],["Jacksonville",30.33,-81.66],["St. Augustine",29.90,-81.31]]],
+["Georgia","GA","America/New_York",[["Atlanta",33.75,-84.39],["Savannah",32.08,-81.09],["Athens",33.96,-83.38]]],
+["Hawaii","HI","Pacific/Honolulu",[["Honolulu",21.31,-157.86],["Hilo",19.71,-155.08],["Lahaina",20.88,-156.68]]],
+["Idaho","ID","America/Boise",[["Boise",43.62,-116.20],["Coeur d'Alene",47.68,-116.78],["Idaho Falls",43.49,-112.03]]],
+["Illinois","IL","America/Chicago",[["Chicago",41.88,-87.63],["Springfield",39.80,-89.64],["Galena",42.42,-90.43]]],
+["Indiana","IN","America/Indiana/Indianapolis",[["Indianapolis",39.77,-86.16],["Bloomington",39.17,-86.53],["South Bend",41.68,-86.25]]],
+["Iowa","IA","America/Chicago",[["Des Moines",41.59,-93.62],["Iowa City",41.66,-91.53],["Dubuque",42.50,-90.66]]],
+["Kansas","KS","America/Chicago",[["Wichita",37.69,-97.34],["Kansas City",39.11,-94.63],["Lawrence",38.97,-95.24]]],
+["Kentucky","KY","America/New_York",[["Louisville",38.25,-85.76],["Lexington",38.04,-84.50],["Bowling Green",36.99,-86.44,"America/Chicago"]]],
+["Louisiana","LA","America/Chicago",[["New Orleans",29.95,-90.07],["Baton Rouge",30.45,-91.19],["Lafayette",30.22,-92.02],["Shreveport",32.53,-93.75]]],
+["Maine","ME","America/New_York",[["Portland",43.66,-70.26],["Bar Harbor",44.39,-68.20],["Augusta",44.31,-69.78]]],
+["Maryland","MD","America/New_York",[["Baltimore",39.29,-76.61],["Frederick",39.41,-77.41],["Annapolis",38.98,-76.49],["Ocean City",38.34,-75.08]]],
+["Massachusetts","MA","America/New_York",[["Boston",42.36,-71.06],["Cambridge",42.37,-71.11],["Salem",42.52,-70.90],["Provincetown",42.05,-70.19]]],
+["Michigan","MI","America/Detroit",[["Detroit",42.33,-83.05],["Ann Arbor",42.28,-83.74],["Grand Rapids",42.96,-85.67],["Traverse City",44.76,-85.62]]],
+["Minnesota","MN","America/Chicago",[["Minneapolis",44.98,-93.27],["Saint Paul",44.95,-93.09],["Duluth",46.79,-92.10]]],
+["Mississippi","MS","America/Chicago",[["Jackson",32.30,-90.18],["Biloxi",30.40,-88.89],["Natchez",31.56,-91.40]]],
+["Missouri","MO","America/Chicago",[["St. Louis",38.63,-90.20],["Kansas City",39.10,-94.58],["Branson",36.64,-93.22]]],
+["Montana","MT","America/Denver",[["Billings",45.78,-108.50],["Bozeman",45.68,-111.04],["Missoula",46.87,-113.99],["Whitefish",48.41,-114.34]]],
+["Nebraska","NE","America/Chicago",[["Omaha",41.26,-95.93],["Lincoln",40.81,-96.68]]],
+["Nevada","NV","America/Los_Angeles",[["Las Vegas",36.17,-115.14],["Reno",39.53,-119.81],["Carson City",39.16,-119.77]]],
+["New Hampshire","NH","America/New_York",[["Manchester",42.99,-71.46],["Portsmouth",43.07,-70.76],["North Conway",44.05,-71.13]]],
+["New Jersey","NJ","America/New_York",[["Jersey City",40.73,-74.07],["Newark",40.74,-74.17],["Atlantic City",39.36,-74.42],["Princeton",40.35,-74.66],["Cape May",38.94,-74.92]]],
+["New Mexico","NM","America/Denver",[["Albuquerque",35.08,-106.65],["Santa Fe",35.69,-105.94],["Taos",36.41,-105.57]]],
+["New York","NY","America/New_York",[["New York City",40.71,-74.01],["Buffalo",42.89,-78.88],["Rochester",43.16,-77.61],["Syracuse",43.05,-76.15],["Albany",42.65,-73.76],["Ithaca",42.44,-76.50],["Saratoga Springs",43.08,-73.78],["Montauk",41.04,-71.95]]],
+["North Carolina","NC","America/New_York",[["Charlotte",35.23,-80.84],["Raleigh",35.78,-78.64],["Asheville",35.60,-82.55],["Wilmington",34.23,-77.94]]],
+["North Dakota","ND","America/Chicago",[["Fargo",46.88,-96.79],["Bismarck",46.81,-100.78],["Medora",46.92,-103.52,"America/Denver"]]],
+["Ohio","OH","America/New_York",[["Columbus",39.96,-83.00],["Cleveland",41.50,-81.69],["Cincinnati",39.10,-84.51]]],
+["Oklahoma","OK","America/Chicago",[["Oklahoma City",35.47,-97.52],["Tulsa",36.15,-95.99]]],
+["Oregon","OR","America/Los_Angeles",[["Portland",45.52,-122.68],["Bend",44.06,-121.32],["Eugene",44.05,-123.09],["Cannon Beach",45.89,-123.96]]],
+["Pennsylvania","PA","America/New_York",[["Philadelphia",39.95,-75.17],["Pittsburgh",40.44,-80.00],["Harrisburg",40.27,-76.88],["Hershey",40.29,-76.65],["Gettysburg",39.83,-77.23],["Lancaster",40.04,-76.31]]],
+["Rhode Island","RI","America/New_York",[["Providence",41.82,-71.41],["Newport",41.49,-71.31]]],
+["South Carolina","SC","America/New_York",[["Charleston",32.78,-79.93],["Columbia",34.00,-81.03],["Greenville",34.85,-82.39],["Myrtle Beach",33.69,-78.89]]],
+["South Dakota","SD","America/Chicago",[["Sioux Falls",43.55,-96.73],["Rapid City",44.08,-103.23,"America/Denver"],["Deadwood",44.38,-103.73,"America/Denver"]]],
+["Tennessee","TN","America/Chicago",[["Nashville",36.16,-86.78],["Memphis",35.15,-90.05],["Chattanooga",35.05,-85.31,"America/New_York"],["Knoxville",35.96,-83.92,"America/New_York"],["Gatlinburg",35.71,-83.51,"America/New_York"]]],
+["Texas","TX","America/Chicago",[["Houston",29.76,-95.37],["Dallas-Fort Worth",32.78,-96.80],["Austin",30.27,-97.74],["San Antonio",29.42,-98.49],["Fredericksburg",30.27,-98.87],["Galveston",29.30,-94.80],["Corpus Christi",27.80,-97.40],["El Paso",31.76,-106.49,"America/Denver"]]],
+["Utah","UT","America/Denver",[["Salt Lake City",40.76,-111.89],["Moab",38.57,-109.55],["Park City",40.65,-111.50],["Springdale",37.19,-112.99]]],
+["Vermont","VT","America/New_York",[["Burlington",44.48,-73.21],["Stowe",44.47,-72.69],["Montpelier",44.26,-72.58]]],
+["Virginia","VA","America/New_York",[["Richmond",37.54,-77.44],["Virginia Beach",36.85,-75.98],["Charlottesville",38.03,-78.48],["Alexandria",38.80,-77.05],["Williamsburg",37.27,-76.71]]],
+["Washington","WA","America/Los_Angeles",[["Seattle",47.61,-122.33],["Spokane",47.66,-117.43],["Tacoma",47.25,-122.44],["Port Angeles",48.12,-123.43]]],
+["West Virginia","WV","America/New_York",[["Charleston",38.35,-81.63],["Morgantown",39.63,-79.96],["Lewisburg",37.80,-80.45]]],
+["Wisconsin","WI","America/Chicago",[["Milwaukee",43.04,-87.91],["Madison",43.07,-89.40],["Sturgeon Bay",44.83,-87.38]]],
+["Wyoming","WY","America/Denver",[["Cheyenne",41.14,-104.82],["Jackson",43.48,-110.76],["Cody",44.53,-109.06]]]
+];
+
+const VISITED = new Set([
+"NY-new-york-city","NJ-jersey-city",
+"FL-miami","FL-key-west","FL-tampa","FL-sarasota","FL-panama-city","FL-destin","FL-tallahassee",
+"PA-pittsburgh","PA-hershey","PA-harrisburg",
+"DC-washington","VA-richmond","MD-frederick",
+"TN-nashville","LA-new-orleans",
+"TX-houston","TX-dallas-fort-worth","TX-austin","TX-fredericksburg","TX-san-antonio",
+"IL-chicago","CA-san-diego","CA-san-francisco"
+]);
+
+/* Parks, falls, lakes and regions that sit under a state rather than a city.
+   [ title, lat, lon, description, tag, been ] */
+const STATEWIDE = {
+NY:[
+ ["Niagara Falls",43.08,-79.07,"Three falls on the Canadian border. The Cave of the Winds deck puts you directly under Bridal Veil.","FALLS",true],
+ ["Letchworth State Park",42.57,-78.00,"Seventeen miles of gorge cut by the Genesee River, with three major waterfalls and cliffs up to 550 feet.","STATE PARK",true],
+ ["The Finger Lakes",42.67,-76.80,"Eleven long glacial lakes with the densest run of wineries in the state, and a gorge trail at nearly every southern end.","REGION",true]
+],
+VA:[
+ ["Shenandoah National Park",38.53,-78.35,"Skyline Drive runs 105 miles along the Blue Ridge with seventy-five overlooks and Old Rag at the southern end.","NATIONAL PARK",true]
+],
+TN:[
+ ["Great Smoky Mountains National Park",35.65,-83.51,"The most visited national park in the country, straddling the North Carolina line. Cades Cove loop opens at dawn.","NATIONAL PARK",true]
+],
+WV:[
+ ["Harpers Ferry",39.33,-77.74,"Where the Shenandoah meets the Potomac and three states meet. The town is West Virginia; the park reaches into Virginia and Maryland.","HISTORIC",true]
+]
+};
+
+/* Things to do. [ title, description, tag ] */
+const TODO = {
+"NY-new-york-city":[
+ ["Central Park","843 acres. The Ramble and Bethesda Terrace are the parts worth slowing down for.","OUTDOORS"],
+ ["The Metropolitan Museum of Art","Two million works across two million square feet. The roof garden opens in warm months.","MUSEUM"],
+ ["Brooklyn Bridge","Walk it from the Brooklyn side early, before the crowd fills the centre lane.","WALK"]
+],
+"NJ-jersey-city":[
+ ["Liberty State Park","The closest land view of the Statue of Liberty, with the whole Manhattan skyline behind it.","OUTDOORS"],
+ ["Exchange Place waterfront","The ferry crosses to lower Manhattan in under ten minutes.","VIEW"]
+],
+"FL-miami":[
+ ["Wynwood Walls","A warehouse district turned open-air mural gallery, repainted constantly.","ART"],
+ ["Vizcaya Museum and Gardens","A 1916 bayfront villa with ten acres of formal Italian gardens.","HISTORIC"],
+ ["South Beach Art Deco District","Around 800 preserved buildings between 5th and 23rd.","WALK"]
+],
+"FL-key-west":[
+ ["Mallory Square at sunset","Street performers gather nightly for the last twenty minutes of light.","FREE"],
+ ["Ernest Hemingway Home","Still home to several dozen six-toed cats descended from the originals.","HISTORIC"],
+ ["Southernmost Point buoy","Ninety miles to Cuba, and a queue for the photo most of the day.","LANDMARK"]
+],
+"FL-tampa":[
+ ["Ybor City","The old cigar quarter, with free-roaming roosters and the 1905 Columbia Restaurant.","WALK"],
+ ["Tampa Riverwalk","Two and a half miles along the Hillsborough, linking most of downtown.","OUTDOORS"]
+],
+"FL-sarasota":[
+ ["Siesta Key Beach","Quartz sand so pale it stays cool underfoot in August.","BEACH"],
+ ["The Ringling","The circus magnate's art museum, Venetian Gothic mansion and a scale model of the whole circus.","MUSEUM"]
+],
+"FL-panama-city":[
+ ["St. Andrews State Park","Dunes, a jetty and flat water on the lagoon side.","OUTDOORS"],
+ ["Shell Island","An undeveloped barrier island, reachable only by boat.","BEACH"]
+],
+"FL-destin":[
+ ["Henderson Beach State Park","Thirty-foot dunes above the clearest water on the panhandle.","BEACH"],
+ ["Destin Harbor Boardwalk","The fishing fleet unloads the day's catch mid-afternoon.","WALK"]
+],
+"FL-tallahassee":[
+ ["Cascades Park","An amphitheatre and waterfall at the edge of downtown.","OUTDOORS"],
+ ["Florida State Capitol","The restored 1845 capitol stands in front of the modern tower.","LANDMARK"]
+],
+"PA-pittsburgh":[
+ ["Duquesne Incline","An 1877 funicular up Mount Washington to the view of the three rivers.","VIEW"],
+ ["The Andy Warhol Museum","The largest museum anywhere devoted to a single artist.","MUSEUM"],
+ ["The Strip District","Markets, delis and the original Primanti Brothers counter.","FOOD"]
+],
+"PA-hershey":[
+ ["Hersheypark","Fourteen roller coasters on the hill above the chocolate factory.","THEME PARK"],
+ ["Hershey Gardens","Twenty-three acres, including an indoor butterfly atrium.","OUTDOORS"]
+],
+"PA-harrisburg":[
+ ["Pennsylvania State Capitol","A Beaux-Arts dome modelled on St. Peter's, free to tour.","LANDMARK"],
+ ["Riverfront Park","A long promenade on the Susquehanna, the widest river on the east coast.","WALK"]
+],
+"DC-washington":[
+ ["The National Mall","Two miles of monuments with free national museums along both sides.","WALK"],
+ ["National Air and Space Museum","Free, and holds the Wright Flyer and the Apollo 11 command module.","MUSEUM"],
+ ["Tidal Basin cherry blossom","Peak bloom lasts roughly a week, usually late March.","SEASONAL"]
+],
+"VA-richmond":[
+ ["Virginia Museum of Fine Arts","Free, and open 365 days a year.","MUSEUM"],
+ ["James River Park System","Class III and IV rapids running through the middle of the city.","OUTDOORS"]
+],
+"MD-frederick":[
+ ["Carroll Creek Park","A canal walk with painted bridges through the middle of town.","WALK"],
+ ["Downtown Frederick","Fifty blocks of preserved 18th and 19th century buildings.","HISTORIC"]
+],
+"TN-nashville":[
+ ["Country Music Hall of Fame","Traces the music back to its string-band and gospel roots.","MUSEUM"],
+ ["Lower Broadway","Live music from late morning to closing, and no cover anywhere.","MUSIC"],
+ ["Centennial Park","Holds a full-scale replica of the Parthenon, complete with the statue.","OUTDOORS"]
+],
+"LA-new-orleans":[
+ ["Jackson Square","Laid out in 1721 as the Place d'Armes, with St. Louis Cathedral behind it.","LANDMARK"],
+ ["Frenchmen Street","Three blocks of live brass and jazz past the edge of the Quarter.","AFTER DARK"],
+ ["St. Charles streetcar","The oldest streetcar line still running anywhere, under the Garden District oaks.","RIDE"],
+ ["City Park","Thirteen hundred acres holding one of the largest stands of mature live oaks left.","OUTDOORS"]
+],
+"TX-houston":[
+ ["Space Center Houston","Historic Mission Control and a complete Saturn V lying on its side.","MUSEUM"],
+ ["The Museum District","Nineteen museums inside a mile and a half, several of them free.","MUSEUM"],
+ ["Buffalo Bayou Park","160 acres of trail and cistern directly below downtown.","OUTDOORS"]
+],
+"TX-dallas-fort-worth":[
+ ["Fort Worth Stockyards","A longhorn drive down Exchange Avenue twice a day.","HISTORIC"],
+ ["Dallas Arts District","The largest contiguous arts district in the country, nineteen blocks of it.","ART"],
+ ["Kimbell Art Museum","Louis Kahn's vaulted galleries; the permanent collection is free.","MUSEUM"]
+],
+"TX-austin":[
+ ["Barton Springs Pool","Three acres of spring-fed water in Zilker Park, holding 68-70°F all year.","OUTDOORS"],
+ ["Texas State Capitol","Pink granite, and taller than the national Capitol. Free tours run all day.","LANDMARK"],
+ ["Congress Avenue Bridge bats","North America's largest urban bat colony pours out at dusk, March to October.","SEASONAL"],
+ ["South Congress Avenue","Boot shops, murals and the long view back up the hill to the dome.","WALK"],
+ ["Lady Bird Lake Trail","A ten-mile crushed-granite loop straight through downtown.","OUTDOORS"]
+],
+"TX-fredericksburg":[
+ ["Enchanted Rock","A 425-foot pink granite dome a short drive north; go at first light in summer.","OUTDOORS"],
+ ["Main Street","German bakeries, and the National Museum of the Pacific War at the east end.","WALK"]
+],
+"TX-san-antonio":[
+ ["The Alamo","Free entry to the mission church, in the middle of downtown.","HISTORIC"],
+ ["River Walk","Fifteen miles of walkway one storey below the street.","WALK"],
+ ["San Antonio Missions","Four Spanish colonial missions on a World Heritage trail you can bike.","HISTORIC"]
+],
+"IL-chicago":[
+ ["Art Institute of Chicago","The second largest art museum in the country.","MUSEUM"],
+ ["Architecture river cruise","Still the clearest way to read the skyline.","TOUR"],
+ ["Millennium Park","Cloud Gate, and free concerts under the Pritzker shell all summer.","FREE"]
+],
+"CA-san-diego":[
+ ["Balboa Park","Twelve hundred acres holding seventeen museums and the zoo.","OUTDOORS"],
+ ["La Jolla Cove","Sea lions, sea caves and a protected area for snorkelling.","BEACH"],
+ ["USS Midway Museum","An aircraft carrier you walk the flight deck and hangar of.","MUSEUM"]
+],
+"CA-san-francisco":[
+ ["Golden Gate Bridge","Walk the east sidewalk; Battery Spencer has the view back.","LANDMARK"],
+ ["Golden Gate Park","Larger than Central Park, with the de Young and the conservatory inside.","OUTDOORS"],
+ ["Alcatraz Island","Book weeks ahead. The night tour is the better one.","TOUR"]
+]
+};
+
+/* Restaurants. Add entries as [ name, cuisine, note ]. */
+const EAT = {};
+
+/* Country and continent level things to do. */
+const COUNTRY_TODO = [];
+const CONTINENT_TODO = [];
+
+/* ===========================================================
+   THE WORLD — continents and the countries under them.
+   Add a country by adding its name to the list. Every country
+   gets its own page, whether or not anything is logged on it.
+   =========================================================== */
+const WORLD = [
+["North America","Blue Ridge to the Rio Grande, and everything that drains into the Gulf.",[
+ "United States","Canada","Mexico","Guatemala","Belize","Honduras","El Salvador","Nicaragua","Costa Rica","Panama",
+ "Cuba","Jamaica","Dominican Republic","Haiti","Puerto Rico","Bahamas","Barbados","Trinidad and Tobago",
+ "Saint Lucia","Antigua and Barbuda","Grenada","Aruba","Curacao","Bermuda","Greenland"]],
+["South America","The Andes down one side, the Amazon across the middle.",[
+ "Brazil","Argentina","Chile","Peru","Bolivia","Ecuador","Colombia","Venezuela","Uruguay","Paraguay",
+ "Guyana","Suriname","French Guiana"]],
+["Europe","Short distances, long histories, very good trains.",[
+ "United Kingdom","Ireland","France","Spain","Portugal","Italy","Germany","Netherlands","Belgium","Luxembourg",
+ "Switzerland","Austria","Czechia","Poland","Hungary","Slovakia","Slovenia","Croatia","Bosnia and Herzegovina",
+ "Serbia","Montenegro","Albania","North Macedonia","Greece","Bulgaria","Romania","Moldova","Denmark","Sweden",
+ "Norway","Finland","Iceland","Estonia","Latvia","Lithuania","Ukraine","Malta","Cyprus","Monaco","Andorra","San Marino"]],
+["Asia","The largest continent, and the one with the most time zones to cross.",[
+ "Japan","South Korea","China","Taiwan","Mongolia","Thailand","Vietnam","Cambodia","Laos","Myanmar","Malaysia",
+ "Singapore","Indonesia","Philippines","Brunei","India","Sri Lanka","Nepal","Bhutan","Maldives","Pakistan",
+ "Bangladesh","United Arab Emirates","Saudi Arabia","Qatar","Bahrain","Kuwait","Oman","Jordan","Israel","Lebanon",
+ "Turkey","Georgia","Armenia","Azerbaijan","Uzbekistan","Kazakhstan","Kyrgyzstan","Tajikistan","Turkmenistan"]],
+["Africa","Fifty-four countries, and more ecological range than any other landmass.",[
+ "Morocco","Algeria","Tunisia","Libya","Egypt","Sudan","Ethiopia","Eritrea","Djibouti","Somalia","Kenya",
+ "Tanzania","Uganda","Rwanda","Burundi","South Africa","Lesotho","Eswatini","Namibia","Botswana","Zimbabwe",
+ "Zambia","Malawi","Mozambique","Madagascar","Mauritius","Seychelles","Ghana","Nigeria","Senegal","Gambia",
+ "Ivory Coast","Mali","Burkina Faso","Benin","Togo","Cameroon","Gabon","Congo","Democratic Republic of the Congo",
+ "Angola","Cape Verde"]],
+["Oceania","Mostly ocean, and the first places on earth to see each new day.",[
+ "Australia","New Zealand","Fiji","Papua New Guinea","French Polynesia","Samoa","Tonga","Vanuatu",
+ "Solomon Islands","New Caledonia","Cook Islands","Palau","Micronesia","Marshall Islands","Kiribati"]],
+["Antarctica","No permanent residents, and a season that runs November to March.",[
+ "Antarctic Peninsula","Ross Sea","South Georgia"]]
+];
+
+/* The only country with states and cities wired up so far. Point this at
+   another country later and the state and city levels follow it. */
+const DETAILED_COUNTRY = "United States";
+
+/* Which cities appear on the homepage clock board, which three are
+   featured below the map, and which map pins carry a label. */
+const BOARD = ["NY-new-york-city","IL-chicago","TX-austin","CA-san-francisco"];
+const FEATURED = ["TX-austin","LA-new-orleans","CA-san-francisco"];
+const LABELLED = new Set(["NY-new-york-city","IL-chicago","TX-austin","CA-san-francisco","CA-san-diego",
+  "FL-miami","LA-new-orleans","TN-nashville","DC-washington","WA-seattle","CO-denver","CA-los-angeles"]);
+
+/* ===========================================================
+   MERIDIAN — engine, views and router.
+   Data lives in assets/js/data.js. You should not need to edit
+   this file to add a place.
+   =========================================================== */
+const slug = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pad2 = n => String(n).padStart(2,'0');
+
+/* ---------- the atlas ---------- */
+const ATLAS = STATES.map(([name,abbr,tz,cities])=>{
+  const st = {name, abbr, tz, slug:abbr.toLowerCase(),
+    statewide:(STATEWIDE[abbr]||[]).map(([t,lat,lon,d,tag,been])=>
+      ({title:t, lat, lon, desc:d, tag, id:'place:'+abbr+':'+slug(t), seed:been?'been':'none'}))};
+  st.id = 'state:'+abbr;
+  st.cities = cities.map(([cn,lat,lon,ctz])=>{
+    const s = slug(cn), key = abbr+'-'+s;
+    return {name:cn, slug:s, key, id:'city:'+key, lat, lon, tz:ctz||tz, state:st,
+      seed: VISITED.has(key) ? 'been' : 'none',
+      todo:(TODO[key]||[]).map(([t,d,g])=>({title:t, desc:d, tag:g, id:'todo:'+key+':'+slug(t)})),
+      eat:(EAT[key]||[]).map(([n,c,note])=>({name:n, cuisine:c, note, id:'eat:'+key+':'+slug(n)}))};
+  });
+  return st;
+});
+const BY_ABBR = Object.fromEntries(ATLAS.map(s=>[s.slug,s]));
+const ALL_CITIES = ATLAS.flatMap(s=>s.cities);
+const CITY_BY_KEY = Object.fromEntries(ALL_CITIES.map(c=>[c.key,c]));
+
+const CONTINENTS = WORLD.map(([name,blurb,countries])=>{
+  const cont = {name, blurb, slug:slug(name), id:'cont:'+slug(name)};
+  cont.countries = countries.map(cn=>({
+    name:cn, slug:slug(cn), id:'country:'+slug(cn), continent:cont,
+    detailed: cn === DETAILED_COUNTRY,
+    seed: cn === DETAILED_COUNTRY ? 'been' : 'none'
+  }));
+  cont.seed = cont.countries.some(c=>c.seed==='been') ? 'been' : 'none';
+  return cont;
+});
+const CONT_BY_SLUG = Object.fromEntries(CONTINENTS.map(c=>[c.slug,c]));
+const ALL_COUNTRIES = CONTINENTS.flatMap(c=>c.countries);
+const USA = ALL_COUNTRIES.find(c=>c.detailed);
+const HOME_CONT = USA.continent;
+
+/* ---------- been / want / nothing ---------- */
+const STORE_KEY = 'meridian-status';
+let STATUS = {};
+try { STATUS = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch(e) { STATUS = {}; }
+const SEED = {};
+ALL_CITIES.forEach(c=>{ if (c.seed !== 'none') SEED[c.id] = c.seed; });
+ATLAS.forEach(s=>s.statewide.forEach(p=>{ if (p.seed !== 'none') SEED[p.id] = p.seed; }));
+ALL_COUNTRIES.forEach(c=>{ if (c.seed !== 'none') SEED[c.id] = c.seed; });
+CONTINENTS.forEach(c=>{ if (c.seed !== 'none') SEED[c.id] = c.seed; });
+
+const statusOf = id => (id in STATUS) ? STATUS[id] : (SEED[id] || 'none');
+const been = id => statusOf(id) === 'been';
+const want = id => statusOf(id) === 'want';
+function setStatus(id, v){
+  if (v === 'none') STATUS[id] = 'none'; else STATUS[id] = v;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(STATUS)); } catch(e){}
+}
+function stateStatus(st){
+  if (st.id in STATUS && STATUS[st.id] !== 'none') return STATUS[st.id];
+  if (st.cities.some(c=>been(c.id)) || st.statewide.some(p=>been(p.id))) return 'been';
+  if (st.cities.some(c=>want(c.id)) || st.statewide.some(p=>want(p.id))) return 'want';
+  return statusOf(st.id);
+}
+function countryStatus(co){
+  if (co.id in STATUS && STATUS[co.id] !== 'none') return STATUS[co.id];
+  if (co.detailed){
+    if (ATLAS.some(s=>stateStatus(s)==='been')) return 'been';
+    if (ATLAS.some(s=>stateStatus(s)==='want')) return 'want';
+  }
+  return statusOf(co.id);
+}
+function continentStatus(ct){
+  if (ct.id in STATUS && STATUS[ct.id] !== 'none') return STATUS[ct.id];
+  const s = ct.countries.map(countryStatus);
+  if (s.includes('been')) return 'been';
+  if (s.includes('want')) return 'want';
+  return statusOf(ct.id);
+}
+const counts = () => ({
+  continents: CONTINENTS.filter(c=>continentStatus(c)==='been').length,
+  countries: ALL_COUNTRIES.filter(c=>countryStatus(c)==='been').length,
+  states: ATLAS.filter(s=>stateStatus(s)==='been').length,
+  cities: ALL_CITIES.filter(c=>been(c.id)).length,
+  places: ATLAS.reduce((n,s)=>n+s.statewide.filter(p=>been(p.id)).length,0),
+  wish: ALL_CITIES.filter(c=>want(c.id)).length
+        + ALL_COUNTRIES.filter(c=>want(c.id)).length
+        + ATLAS.reduce((n,s)=>n+s.statewide.filter(p=>want(p.id)).length,0)
+});
+
+/* ---------- sun position: NOAA sunrise equation, no network needed ---------- */
+const RAD = Math.PI/180, J2000 = 2451545.0;
+function sunTimes(lat, lon, when){
+  const J = when.getTime()/86400000 + 2440587.5, lw = -lon;
+  const n = Math.round(J - J2000 - 0.0009 - lw/360);
+  const Js = J2000 + 0.0009 + lw/360 + n;
+  const M = (357.5291 + 0.98560028*(Js - J2000)) % 360;
+  const C = 1.9148*Math.sin(M*RAD) + 0.02*Math.sin(2*M*RAD) + 0.0003*Math.sin(3*M*RAD);
+  const lam = (M + C + 180 + 102.9372) % 360;
+  const Jt = Js + 0.0053*Math.sin(M*RAD) - 0.0069*Math.sin(2*lam*RAD);
+  const dec = Math.asin(Math.sin(lam*RAD)*Math.sin(23.4397*RAD));
+  const cosH = (Math.sin(-0.833*RAD) - Math.sin(lat*RAD)*Math.sin(dec)) / (Math.cos(lat*RAD)*Math.cos(dec));
+  if (cosH >= 1) return {polar:'night'};
+  if (cosH <= -1) return {polar:'day'};
+  const H = Math.acos(cosH)/RAD;
+  const toDate = j => new Date((j - 2440587.5)*86400000);
+  return {rise: toDate(Jt - H/360), set: toDate(Jt + H/360)};
+}
+function isNightAt(lat, lon, when){
+  const t = sunTimes(lat, lon, when || new Date());
+  if (t.polar) return t.polar === 'night';
+  const now = (when||new Date()).getTime();
+  return now < t.rise.getTime() || now > t.set.getTime();
+}
+const fmtTime = (d, tz) => new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',timeZone:tz}).format(d);
+const fmtZone = (d, tz) => { try { return new Intl.DateTimeFormat('en-US',{timeZoneName:'short',timeZone:tz})
+  .formatToParts(d).find(p=>p.type==='timeZoneName').value; } catch(e){ return ''; } };
+const coord = (lat,lon)=> Math.abs(lat).toFixed(2)+'°'+(lat<0?'S':'N')+' '+Math.abs(lon).toFixed(2)+'°'+(lon<0?'W':'E');
+
+/* ---------- sky glyphs: drawn, never emoji ---------- */
+const G = {
+  clear:'<circle cx="12" cy="12" r="4.3"/><path d="M12 2.2v2.4M12 19.4v2.4M2.2 12h2.4M19.4 12h2.4M5.1 5.1l1.7 1.7M17.2 17.2l1.7 1.7M18.9 5.1l-1.7 1.7M6.8 17.2l-1.7 1.7"/>',
+  night:'<path d="M19.4 14.6A8 8 0 0 1 9.4 4.6a8 8 0 1 0 10 10Z"/>',
+  partly:'<circle cx="9.2" cy="8.6" r="3"/><path d="M9.2 3.1v1.5M3.7 8.6h1.5M5.3 4.7l1.1 1.1M13.1 4.7 12 5.8"/><path d="M10.4 19.4h6.9a3.3 3.3 0 0 0 .3-6.6 5 5 0 0 0-9.4-1 2.9 2.9 0 0 0 2.2 7.6Z"/>',
+  cloudy:'<path d="M7.3 18.4h9.4a3.9 3.9 0 0 0 .4-7.8 5.9 5.9 0 0 0-11.4 1.6 3.3 3.3 0 0 0 1.6 6.2Z"/>',
+  rain:'<path d="M7.3 16.6h9.4a3.9 3.9 0 0 0 .4-7.8 5.9 5.9 0 0 0-11.4 1.6 3.3 3.3 0 0 0 1.6 6.2Z"/><path d="m9.2 19.1-.9 2.3M13 19.1l-.9 2.3M16.8 19.1l-.9 2.3"/>',
+  snow:'<path d="M7.3 16.2h9.4a3.9 3.9 0 0 0 .4-7.8 5.9 5.9 0 0 0-11.4 1.6 3.3 3.3 0 0 0 1.6 6.2Z"/><path d="M9.4 20.1h.01M12.9 21.4h.01M16.4 20.1h.01"/>',
+  storm:'<path d="M7.3 15.4h9.4a3.9 3.9 0 0 0 .4-7.8 5.9 5.9 0 0 0-11.4 1.6 3.3 3.3 0 0 0 1.6 6.2Z"/><path d="M13 17.2 10 21.3h3l-.9 2.3"/>',
+  fog:'<path d="M3.4 8.6h12.4M5.8 12.4h14M3.4 16.2h10.6M17.8 16.2h2.6"/>'
+};
+const glyph = (k,size) => '<svg width="'+(size||19)+'" height="'+(size||19)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(G[k]||G.cloudy)+'</svg>';
+function codeToSky(code, night){
+  if (code === 0) return night ? ['night','CLEAR'] : ['clear','CLEAR'];
+  if (code === 1 || code === 2) return ['partly','PARTLY CLOUDY'];
+  if (code === 3) return ['cloudy','OVERCAST'];
+  if (code === 45 || code === 48) return ['fog','FOG'];
+  if (code >= 95) return ['storm','THUNDERSTORM'];
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return ['snow','SNOW'];
+  if (code >= 51) return ['rain','RAIN'];
+  return ['cloudy','CLOUD'];
+}
+
+/* ---------- weather (open-meteo, no key, no account) ---------- */
+const WX = {};
+async function loadWeather(points){
+  const need = points.filter(p=>!(p.key in WX));
+  if (!need.length){ paintWeather(); return; }
+  try{
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude='+need.map(p=>p.lat).join(',')
+      +'&longitude='+need.map(p=>p.lon).join(',')
+      +'&current=temperature_2m,weather_code&temperature_unit=fahrenheit';
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('bad response');
+    let j = await r.json();
+    if (!Array.isArray(j)) j = [j];
+    j.forEach((d,i)=>{ if (d && d.current) WX[need[i].key] = {t:Math.round(d.current.temperature_2m), c:d.current.weather_code}; });
+    paintWeather();
+  }catch(e){ /* offline, or blocked by the host's content policy — clocks still run */ }
+}
+function paintWeather(){
+  document.querySelectorAll('[data-wx]').forEach(el=>{
+    const w = WX[el.dataset.wx];
+    if (!w) return;
+    const night = el.dataset.night === '1', big = el.dataset.big === '1';
+    const sky = codeToSky(w.c, night);
+    el.innerHTML = glyph(sky[0], big?26:14) + '<span class="'+(big?'ro-v':'')+'">'+w.t+'°F</span>'
+      + (big ? '<span class="lab-s" style="margin-left:4px">'+sky[1]+'</span>' : '');
+  });
+}
+
+/* ---------- theme ---------- */
+let themeMode = localStorage.getItem('meridian-theme') || 'auto';
+let routeIsNight = false;
+function applyTheme(){
+  const dark = themeMode === 'auto' ? routeIsNight : themeMode === 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.getElementById('themelab').textContent = themeMode.toUpperCase();
+}
+document.getElementById('themebtn').addEventListener('click',()=>{
+  themeMode = themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto';
+  localStorage.setItem('meridian-theme', themeMode);
+  applyTheme();
+});
+
+/* ---------- CSV export: imports straight into Google My Maps ---------- */
+function csvOf(rows){
+  const q = v => '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  return ['Name,Location,Category,Status,Notes'].concat(rows.map(r=>r.map(q).join(','))).join('\r\n');
+}
+async function offerFile(filename, text){
+  let dl = null;
+  try { if (window.claude && claude.use) dl = await claude.use('downloads'); } catch(e){}
+  if (dl){ try { await dl.save({filename, data:text}); } catch(e){} return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text],{type:'text/csv'}));
+  a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+const mark = id => statusOf(id).toUpperCase();
+function cityRows(c){
+  const at = ', '+c.name+', '+c.state.name;
+  const rows = [[c.name+' — city centre', c.name+', '+c.state.name, 'CITY', mark(c.id), '']];
+  c.todo.forEach(t=>rows.push([t.title, t.title+at, t.tag, mark(t.id), t.desc]));
+  c.eat.forEach(e=>rows.push([e.name, e.name+at, 'RESTAURANT', mark(e.id), e.note||'']));
+  return rows;
+}
+function stateRows(st){
+  const rows = [];
+  st.statewide.forEach(p=>rows.push([p.title, p.title+', '+st.name, p.tag, mark(p.id), p.desc]));
+  st.cities.filter(c=>statusOf(c.id)!=='none' || c.todo.length).forEach(c=>rows.push(...cityRows(c)));
+  return rows;
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-dl]');
+  if (!b) return;
+  const bits = b.dataset.dl.split(':');
+  if (bits[0] === 'city'){ const c = CITY_BY_KEY[bits[1]]; offerFile(c.slug+'-places.csv', csvOf(cityRows(c))); }
+  else if (bits[0] === 'state'){ const s = BY_ABBR[bits[1]]; offerFile(s.slug+'-places.csv', csvOf(stateRows(s))); }
+  else offerFile('meridian-all-places.csv', csvOf(ATLAS.flatMap(stateRows)));
+});
+
+/* ---------- the been / want control ---------- */
+const ICON = {
+  down:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 3.5v12"/><path d="m7.4 11.2 4.6 4.6 4.6-4.6"/><path d="M4.5 19.5h15"/></svg>',
+  compass:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15 9-2 4-4 2 2-4Z"/></svg>',
+  check:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 12.8 5 5 10-11"/></svg>',
+  flag:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 21V4.2M5.5 5.2h12l-2.4 4 2.4 4h-12"/></svg>'
+};
+function ctl(id, label){
+  const v = statusOf(id);
+  return '<span class="statusctl" data-id="'+id+'" role="group" aria-label="'+esc(label||'Your status for this place')+'">'
+    + '<button type="button" class="been" data-v="been" aria-pressed="'+(v==='been')+'">'+ICON.check+'BEEN</button>'
+    + '<button type="button" class="want" data-v="want" aria-pressed="'+(v==='want')+'">'+ICON.flag+'WANT</button></span>';
+}
+document.addEventListener('click', e=>{
+  const btn = e.target.closest('.statusctl button');
+  if (!btn) return;
+  e.preventDefault(); e.stopPropagation();
+  const id = btn.closest('.statusctl').dataset.id;
+  setStatus(id, statusOf(id) === btn.dataset.v ? 'none' : btn.dataset.v);
+  const y = window.scrollY; route(); window.scrollTo(0, y);
+});
+
+/* ===========================================================
+   VIEWS
+   =========================================================== */
+const crumbs = items => '<div class="wrap crumbs">' + items.map((it,i)=>
+  i === items.length-1 ? '<span class="here">'+esc(it[0]).toUpperCase()+'</span>'
+    : '<a href="'+it[1]+'">'+esc(it[0]).toUpperCase()+'</a>').join(' / ') + '</div>';
+const secHead = (title, right) => '<div class="sec-head"><h2 class="h2">'+title+'</h2><span class="lab">'+(right||'')+'</span></div>';
+const blank = (title, body) => '<div class="blank"><span style="color:var(--ghost)">'+ICON.compass+'</span><div class="blank-b"><span class="card-t">'+title+'</span><p class="row-d">'+body+'</p></div></div>';
+const tag = t => '<span class="chip">'+esc(t)+'</span>';
+const stat = (n,l)=>'<div style="display:flex;flex-direction:column;gap:8px"><span class="stat-n">'+n+'</span><span class="lab">'+l+'</span></div>';
+const pinFor = s => '<span class="pin'+(s==='been'?'':s==='want'?' want':' off')+'"></span>';
+
+const contHref = ct => '#/'+ct.slug;
+const countryHref = co => '#/'+co.continent.slug+'/'+co.slug;
+const stateHref = s => countryHref(USA)+'/'+s.slug;
+const cityHref = c => stateHref(c.state)+'/'+c.slug;
+
+function rowsHTML(list){
+  return list.map((t,i)=>{
+    const s = statusOf(t.id);
+    return '<div class="row"><span class="row-n">'+pad2(i+1)+'</span>'
+    + '<div class="row-b"><span class="row-t">'+esc(t.title)+'</span>'
+    + '<p class="row-d">'+esc(t.desc)+'</p>'
+    + '<p class="row-note">[ your note ]</p></div>'
+    + '<span class="row-tags">'+(t.tag?tag(t.tag):'')+ctl(t.id, t.title)+'</span></div>';
+  }).join('');
+}
+function placeCard(obj){
+  const s = obj.status, href = obj.href;
+  return '<div class="card'+(s==='none'?' empty':'')+(s==='want'?' wish':'')+'" style="min-height:'+(obj.min||168)+'px">'
+    + '<a class="go" href="'+href+'" style="display:flex;flex-direction:column;gap:7px">'
+    + '<span class="card-t"'+(obj.small?' style="font-size:26px"':'')+'>'+esc(obj.name)+'</span>'
+    + '<span class="lab-s"'+(s==='none'?' style="color:var(--ghost)"':'')+'>'+obj.sub+'</span></a>'
+    + '<span class="card-foot">'+pinFor(s)+ctl(obj.id, obj.name)+'</span></div>';
+}
+function cityCard(c){
+  const s = statusOf(c.id), night = isNightAt(c.lat,c.lon);
+  const sub = '<span data-tz="'+c.tz+'">'+fmtTime(new Date(),c.tz)+'</span> · '+coord(c.lat,c.lon);
+  return '<div class="card'+(s==='none'?' empty':'')+(s==='want'?' wish':'')+'" style="min-height:184px">'
+    + '<a class="go" href="'+cityHref(c)+'" style="display:flex;flex-direction:column;gap:7px">'
+    + '<span class="card-t">'+esc(c.name)+'</span>'
+    + '<span class="lab-s"'+(s==='none'?' style="color:var(--ghost)"':'')+'>'+sub+'</span></a>'
+    + '<span class="card-foot">'
+    + '<span style="display:flex;align-items:center;gap:10px">'+pinFor(s)
+    + '<span class="chip warm" data-wx="'+c.key+'" data-night="'+(night?1:0)+'">'+glyph(night?'night':'clear',14)+'<span>—</span></span></span>'
+    + ctl(c.id, c.name)+'</span></div>';
+}
+function plot(points){
+  const X = l => ((l+125)/58.5)*100, Y = l => ((49.4-l)/25)*100;
+  const dots = points.filter(p=>p.lon>-126 && p.lon<-66 && p.lat>23.5 && p.lat<49.6).map(p=>
+    '<span class="dot'+(p.s==='been'?'':' off')+'" style="left:'+X(p.lon).toFixed(2)+'%;top:'+Y(p.lat).toFixed(2)+'%" title="'+esc(p.label)+'">'
+    + pinFor(p.s)+(p.show?'<b>'+esc(p.label).toUpperCase()+'</b>':'')+'</span>').join('');
+  return '<div class="plot"><div class="plot-in">'+dots+'</div></div>';
+}
+
+/* ---------- home ---------- */
+function viewHome(){
+  routeIsNight = isNightAt(38,-97);
+  const C = counts();
+  const board = BOARD.map(k=>{
+    const c = CITY_BY_KEY[k]; if (!c) return '';
+    const night = isNightAt(c.lat,c.lon);
+    return '<a class="board-r" href="'+cityHref(c)+'">'
+      + '<span class="board-city"><span style="font-size:15px;font-weight:500">'+esc(c.name)+'</span>'
+      + '<span class="lab-s">'+esc(c.state.name).toUpperCase()+' · '+fmtZone(new Date(),c.tz)+'</span></span>'
+      + '<span class="board-right"><span class="sky" data-wx="'+c.key+'" data-night="'+(night?1:0)+'" style="font-family:var(--mono);font-size:13px">'
+      + glyph(night?'night':'clear',17)+'<span>—</span></span>'
+      + '<span class="board-t" data-tz="'+c.tz+'">'+fmtTime(new Date(),c.tz)+'</span></span></a>';
+  }).join('');
+
+  const pts = [];
+  ATLAS.forEach(s=>{
+    s.statewide.forEach(p=>pts.push({lat:p.lat,lon:p.lon,label:p.title,s:statusOf(p.id),show:false}));
+    s.cities.forEach(c=>pts.push({lat:c.lat,lon:c.lon,label:c.name,s:statusOf(c.id),show:LABELLED.has(c.key)}));
+  });
+
+  const feat = FEATURED.map(k=>{
+    const c = CITY_BY_KEY[k]; if (!c) return '';
+    const night = isNightAt(c.lat,c.lon);
+    return '<div class="card" style="min-height:200px"><a class="go" href="'+cityHref(c)+'" style="display:flex;flex-direction:column;gap:8px">'
+      + '<span class="lab-s">'+esc(c.state.name).toUpperCase()+'</span>'
+      + '<span class="card-t" style="font-size:34px">'+esc(c.name)+'</span>'
+      + '<span class="lab-s"><span data-tz="'+c.tz+'">'+fmtTime(new Date(),c.tz)+'</span> · '+c.todo.length+' THINGS TO DO</span></a>'
+      + '<span class="card-foot"><span class="chip warm" data-wx="'+c.key+'" data-night="'+(night?1:0)+'">'+glyph(night?'night':'clear',14)+'<span>—</span></span>'
+      + ctl(c.id, c.name)+'</span></div>';
+  }).join('');
+
+  const conts = CONTINENTS.map(ct=>{
+    const s = continentStatus(ct);
+    const n = ct.countries.filter(c=>countryStatus(c)==='been').length;
+    return placeCard({name:ct.name, id:ct.id, href:contHref(ct), status:s,
+      sub: n ? n+' OF '+ct.countries.length+' COUNTRIES' : ct.countries.length+' COUNTRIES · NOT YET'});
+  }).join('');
+
+  return '<div class="wrap" style="padding-top:64px"><div class="hero">'
+    + '<div class="hero-main">'
+    + '<span class="lab" style="color:var(--warm)">A PERSONAL TRAVEL ATLAS</span>'
+    + '<h1 class="title-xl">Somewhere on this map, the sun is still up.</h1>'
+    + '<p class="lede">Every place I have travelled, kept as a living atlas — what there is to do, where I ate, and what the clock and the sky are doing there at this exact moment.</p>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:12px;padding-top:4px">'
+    + '<a class="btn" href="'+countryHref(USA)+'">Enter the atlas</a>'
+    + '<a class="btn ghost" href="#map">See the map</a></div></div>'
+    + '<div class="hero-side"><div class="board"><div class="board-h"><span class="lab">RIGHT NOW</span>'
+    + '<span class="live"><i></i>LIVE</span></div>'+board+'</div>'
+    + '<p class="note" style="margin-top:12px">Clocks tick on their own. Conditions refresh when the page opens.</p></div></div>'
+
+    + '<div class="sec"><div class="stats">'
+    + stat(C.continents,'CONTINENTS')+stat(C.countries,'COUNTRIES')+stat(C.states,'STATES &amp; DISTRICTS')
+    + stat(C.cities,'CITIES')+stat(C.places,'PARKS &amp; REGIONS')+stat(C.wish,'ON THE LIST')+'</div></div>'
+
+    + '<div class="sec" id="map"><div class="panel">'
+    + '<div class="panel-head"><span style="display:flex;flex-wrap:wrap;align-items:center;gap:16px">'
+    + '<span class="lab">EVERY PIN, ONE PLACE</span>'
+    + '<span class="chip warm"><span class="pin" style="width:8px;height:8px;box-shadow:none"></span>BEEN</span>'
+    + '<span class="chip on"><span class="pin want" style="width:8px;height:8px;box-shadow:none"></span>WANT TO GO</span>'
+    + '<span class="chip"><span class="pin off" style="width:8px;height:8px"></span>NO MARK</span></span>'
+    + '<button class="btn" data-dl="all">'+ICON.down+'Download every place</button></div>'
+    + plot(pts)+'</div>'
+    + '<p class="note" style="margin-top:14px">The file is a CSV. In Google My Maps choose <em>Create a new map → Import</em>, then pick the Location column for placement and the Status or Category column for the pin colours.</p></div>'
+
+    + '<div class="sec">'+secHead('Most recently added', C.cities+' CITIES LOGGED')
+    + '<div class="grid g-wide" style="padding-top:28px">'+feat+'</div></div>'
+
+    + '<div class="sec">'+secHead('Start at the top','CONTINENT → COUNTRY → STATE → CITY')
+    + '<div class="grid g-cities" style="padding-top:28px">'+conts+'</div></div>'
+
+    + '<div class="sec"><p class="note">Mark anything on this site as <strong>been</strong> or <strong>want</strong> — cities, states, countries, continents, and every single thing to do. Your marks are kept in this browser and feed the counts above, the map pins and the CSV export.</p></div></div>';
+}
+
+/* ---------- continent ---------- */
+function viewContinent(ct){
+  routeIsNight = isNightAt(38,-97);
+  const n = ct.countries.filter(c=>countryStatus(c)==='been').length;
+  const cards = ct.countries.map(co=>placeCard({
+    name:co.name, id:co.id, href:countryHref(co), status:countryStatus(co), small:true, min:140,
+    sub: co.detailed ? counts().states+' STATES LOGGED' : (countryStatus(co)==='want' ? 'ON THE LIST' : 'NOTHING LOGGED')
+  })).join('');
+  return crumbs([['World','#/'],[ct.name,'']])
+  + '<div class="wrap"><div style="padding-top:40px;display:flex;flex-wrap:wrap;gap:32px;align-items:flex-end;justify-content:space-between">'
+  + '<div style="flex:999 1 460px;min-width:0"><h1 class="title-xl">'+esc(ct.name)+'</h1>'
+  + '<p class="lede" style="padding-top:18px">'+esc(ct.blurb)+'</p></div>'
+  + '<div style="flex:0 0 auto">'+ctl(ct.id, ct.name)+'</div></div>'
+  + '<div class="sec">'+secHead('Countries', n+' OF '+ct.countries.length+' LOGGED')
+  + '<div class="grid g-cities" style="padding-top:28px">'+cards+'</div></div>'
+  + '<div class="sec">'+secHead('Across the continent','00 LOGGED')
+  + blank('Nothing logged at this level yet','Things that belong to the continent rather than any one country — long rail routes, border crossings, road trips — live here.')
+  + '</div></div>';
+}
+
+/* ---------- country ---------- */
+function viewCountry(co){
+  routeIsNight = isNightAt(38,-97);
+  const head = crumbs([['World','#/'],[co.continent.name, contHref(co.continent)],[co.name,'']]);
+  if (!co.detailed){
+    return head + '<div class="wrap"><div style="padding-top:40px;display:flex;flex-wrap:wrap;gap:32px;align-items:flex-end;justify-content:space-between">'
+      + '<h1 class="title-xl" style="flex:999 1 420px;min-width:0">'+esc(co.name)+'</h1>'
+      + '<div style="flex:0 0 auto">'+ctl(co.id, co.name)+'</div></div>'
+      + '<div class="sec">'+secHead('Things to do','00 LOGGED')
+      + blank('This page is ready and empty', 'Mark '+esc(co.name)+' as been or want above. To give it states, regions and cities, add it to the STATES list in <code>assets/js/data.js</code> and point DETAILED_COUNTRY at it.')
+      + '</div>'
+      + '<div class="sec">'+secHead('Cities','00 LOGGED')
+      + blank('No cities yet','City pages appear here as soon as the country has entries in the data file.')
+      + '</div></div>';
+  }
+  const C = counts();
+  const cards = ATLAS.map(s=>{
+    const st = stateStatus(s);
+    const nb = s.cities.filter(c=>been(c.id)).length + s.statewide.filter(p=>been(p.id)).length;
+    return placeCard({name:s.name, id:s.id, href:stateHref(s), status:st, small:true, min:140,
+      sub: nb ? s.abbr+' · '+nb+' LOGGED' : s.abbr+(st==='want'?' · ON THE LIST':' · NOT YET')});
+  }).join('');
+  return head
+  + '<div class="wrap"><div style="padding-top:40px;display:flex;flex-wrap:wrap;gap:32px;align-items:flex-end;justify-content:space-between">'
+  + '<div style="flex:999 1 460px;min-width:0"><h1 class="title-xl">'+esc(co.name)+'</h1>'
+  + '<p class="lede" style="padding-top:18px">Fifty states and one district, each with a page already waiting. '+C.states+' of them have something on it.</p></div>'
+  + '<div style="flex:0 0 auto">'+ctl(co.id, co.name)+'</div></div>'
+  + '<div class="stats" style="margin-top:34px">'+stat(C.states,'STATES &amp; DISTRICTS')+stat(C.cities,'CITIES')
+  + stat(C.places,'PARKS &amp; REGIONS')+stat(51-C.states,'STILL EMPTY')+'</div>'
+  + '<div class="sec">'+secHead('Nationwide','00 LOGGED')
+  + blank('Nothing logged at this level yet','Things that are not tied to one state — a coast-to-coast drive, a chain of national parks, the Appalachian Trail.')
+  + '</div>'
+  + '<div class="sec">'+secHead('Every state','USE THE SEARCH BOX TO JUMP')
+  + '<div class="grid g-cities" style="padding-top:28px">'+cards+'</div></div></div>';
+}
+
+/* ---------- state ---------- */
+function viewState(st){
+  const anchor = st.cities.find(c=>been(c.id)) || st.cities[0];
+  routeIsNight = isNightAt(anchor.lat, anchor.lon);
+  const nb = st.cities.filter(c=>been(c.id)).length;
+  const wide = st.statewide.length ? rowsHTML(st.statewide)
+    : blank('Nothing statewide yet','Parks, lakes, falls and regions that belong to no single city are listed here. Add them to STATEWIDE in the data file.');
+  const rank = c => statusOf(c.id)==='been' ? 0 : statusOf(c.id)==='want' ? 1 : 2;
+  const sorted = st.cities.slice().sort((a,b)=>rank(a)-rank(b));
+  return crumbs([['World','#/'],[HOME_CONT.name, contHref(HOME_CONT)],[USA.name, countryHref(USA)],[st.name,'']])
+  + '<div class="wrap"><div style="padding-top:40px;display:flex;flex-wrap:wrap;gap:40px;align-items:flex-end;justify-content:space-between">'
+  + '<div style="flex:999 1 420px;min-width:0;display:flex;flex-direction:column;gap:18px">'
+  + '<h1 class="title-xl">'+esc(st.name)+'</h1>'+ctl(st.id, st.name)+'</div>'
+  + '<div class="readout" style="flex:0 0 auto">'
+  + '<span class="ro"><span class="ro-v">'+nb+'</span><span class="lab">CITIES LOGGED</span></span>'
+  + '<span class="ro"><span class="ro-v">'+st.statewide.filter(p=>been(p.id)).length+'</span><span class="lab">ACROSS THE STATE</span></span>'
+  + '<span class="ro"><span class="ro-v">'+(st.cities.length-nb)+'</span><span class="lab">PAGES WAITING</span></span>'
+  + '</div></div>'
+  + '<div class="sec">'+secHead('Across the state','PARKS, FALLS, LAKES AND REGIONS')+wide+'</div>'
+  + '<div class="sec">'+secHead('Cities', nb+' OF '+st.cities.length+' LOGGED')
+  + '<div class="grid g-cities" style="padding-top:28px">'+sorted.map(cityCard).join('')+'</div></div>'
+  + '<div class="sec"><div class="panel"><div class="panel-head" style="border:0">'
+  + '<span style="display:flex;flex-direction:column;gap:6px"><span class="card-t" style="font-size:26px">Every '+esc(st.name)+' pin, one file</span>'
+  + '<span class="note">Bundles the statewide places and every city below them, with your been and want marks.</span></span>'
+  + '<button class="btn" data-dl="state:'+st.slug+'">'+ICON.down+st.slug+'-places.csv</button></div></div></div>'
+  + '</div>';
+}
+
+/* ---------- city ---------- */
+function viewCity(c){
+  const now = new Date();
+  const sun = sunTimes(c.lat, c.lon, now);
+  const night = isNightAt(c.lat, c.lon, now);
+  routeIsNight = night;
+  const sunLine = sun.polar ? (sun.polar === 'day' ? 'MIDNIGHT SUN' : 'POLAR NIGHT')
+    : '↑ '+fmtTime(sun.rise,c.tz)+'<br>↓ '+fmtTime(sun.set,c.tz);
+  const idx = c.state.cities.indexOf(c);
+  const prev = c.state.cities[(idx-1+c.state.cities.length)%c.state.cities.length];
+  const next = c.state.cities[(idx+1)%c.state.cities.length];
+  const places = c.todo.length
+    ? '<div class="places"><div class="places-l">'
+      + c.todo.map(t=>'<a href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(t.title+', '+c.name+', '+c.state.name)+'" target="_blank" rel="noopener">'+pinFor(statusOf(t.id))+esc(t.title)+'</a>').join('')
+      + '</div><div class="places-r"><span class="note">Each name opens in Google Maps. The CSV carries all of them, and your marks, in one import.</span></div></div>'
+    : '';
+  return crumbs([['World','#/'],[HOME_CONT.name, contHref(HOME_CONT)],[USA.name, countryHref(USA)],[c.state.name, stateHref(c.state)],[c.name,'']])
+  + '<div class="wrap"><div style="padding-top:40px"><div class="hero">'
+  + '<div class="hero-main">'
+  + '<h1 class="title-xl">'+esc(c.name)+'</h1>'
+  + '<span class="lab">'+esc(c.state.name).toUpperCase()+', UNITED STATES · '+coord(c.lat,c.lon)+'</span>'
+  + '<div class="readout">'
+  + '<span class="ro"><span class="lab">LOCAL TIME</span><span class="ro-v" data-tz="'+c.tz+'">'+fmtTime(now,c.tz)+'</span></span>'
+  + '<span class="ro"><span class="lab">SKY</span><span class="sky" data-wx="'+c.key+'" data-night="'+(night?1:0)+'" data-big="1">'
+  + glyph(night?'night':'clear',26)+'<span class="ro-v">—</span></span></span>'
+  + '<span class="ro"><span class="lab">SUN</span><span class="ro-sun">'+sunLine+'</span></span></div>'
+  + '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">'
+  + ctl(c.id, c.name)
+  + '<span class="chip warm">'+glyph(night?'night':'clear',14)+(night?'IT IS NIGHT IN ':'IT IS DAYTIME IN ')+esc(c.name).toUpperCase()+'</span></div>'
+  + '<p class="note">The page follows this city\u2019s clock, not yours — override it with the control up top.</p>'
+  + '</div>'
+  + '<div class="hero-side"><div class="board"><div class="board-h"><span class="lab">SAVED PLACES</span>'
+  + '<span class="lab-s">'+pad2(c.todo.length+c.eat.length)+'</span></div>'
+  + '<div style="padding:18px"><p class="note" style="margin-bottom:14px">One CSV with every pin on this page, ready to import into Google My Maps.</p>'
+  + '<button class="btn" data-dl="city:'+c.key+'">'+ICON.down+c.slug+'-places.csv</button></div></div></div>'
+  + '</div></div>'
+  + '<div class="sec">'+secHead('Things to do', pad2(c.todo.length)+' LISTED')
+  + (c.todo.length ? rowsHTML(c.todo) : blank('Nothing logged here yet','Add entries for this city to TODO in the data file and they appear here, on the map and in the CSV.'))
+  + '</div>'
+  + '<div class="sec">'+secHead('Where I ate', pad2(c.eat.length)+' LOGGED')
+  + (c.eat.length
+    ? '<div class="grid g-wide" style="padding-top:28px">'+c.eat.map(e=>'<div class="card" style="justify-content:flex-start;gap:12px;min-height:0">'
+      + '<span class="lab-s">'+esc(e.cuisine||'')+'</span><span class="card-t">'+esc(e.name)+'</span>'
+      + '<p class="row-d">'+esc(e.note||'')+'</p><span class="card-foot">'+ctl(e.id, e.name)+'</span></div>').join('')+'</div>'
+    : blank('No restaurants logged yet','Add them to EAT in the data file — name, cuisine and one line on whether it was worth it.'))
+  + '</div>'
+  + (places ? '<div class="sec">'+secHead('On the map','OPENS IN GOOGLE MAPS')+'<div class="panel" style="margin-top:28px">'+places+'</div></div>' : '')
+  + '<div class="pagenav">'
+  + '<a href="'+cityHref(prev)+'"><span class="lab-s">← PREVIOUS</span><span class="nt">'+esc(prev.name)+'</span></a>'
+  + '<a class="lab" href="'+stateHref(c.state)+'" style="padding:8px 0">ALL OF '+esc(c.state.name).toUpperCase()+'</a>'
+  + '<a class="nx" href="'+cityHref(next)+'"><span class="lab-s">NEXT →</span><span class="nt">'+esc(next.name)+'</span></a>'
+  + '</div></div>';
+}
+
+function viewMissing(){
+  routeIsNight = isNightAt(38,-97);
+  return '<div class="wrap" style="padding-top:80px"><h1 class="title-l">No page at that address</h1>'
+  + '<p class="lede" style="padding-top:16px">Try the search box, or <a href="#/">start again from the atlas</a>.</p></div>';
+}
+
+/* ===========================================================
+   ROUTER
+   =========================================================== */
+function route(){
+  const parts = location.hash.replace(/^#\/?/,'').split('#')[0].split('/').filter(Boolean);
+  let html, points = [], title = 'Meridian', foot = 'A PERSONAL TRAVEL ATLAS';
+  const ct = parts[0] ? CONT_BY_SLUG[parts[0]] : null;
+  if (!parts.length){ html = viewHome(); points = BOARD.concat(FEATURED); }
+  else if (!ct){ html = viewMissing(); }
+  else if (parts.length === 1){ html = viewContinent(ct); title = ct.name+' — Meridian'; }
+  else {
+    const co = ct.countries.find(c=>c.slug === parts[1]);
+    if (!co){ html = viewMissing(); }
+    else if (parts.length === 2 || !co.detailed){ html = viewCountry(co); title = co.name+' — Meridian'; }
+    else {
+      const st = BY_ABBR[parts[2]];
+      if (!st){ html = viewMissing(); }
+      else if (parts.length === 3){
+        html = viewState(st); title = st.name+' — Meridian'; foot = st.tz.toUpperCase().replace('_',' ');
+        points = st.cities.map(c=>c.key);
+      } else {
+        const c = st.cities.find(x=>x.slug === parts[3]);
+        if (!c){ html = viewMissing(); }
+        else { html = viewCity(c); title = c.name+', '+st.abbr+' — Meridian'; foot = c.tz.toUpperCase().replace('_',' '); points = [c.key]; }
+      }
+    }
+  }
+  document.getElementById('app').innerHTML = html;
+  document.title = title;
+  document.getElementById('footnote').textContent = foot;
+  applyTheme();
+  tick();
+  loadWeather(points.map(k=>CITY_BY_KEY[k]).filter(Boolean).map(c=>({key:c.key, lat:c.lat, lon:c.lon})));
+}
+function tick(){
+  const now = new Date();
+  document.querySelectorAll('[data-tz]').forEach(el=>{ el.textContent = fmtTime(now, el.dataset.tz); });
+}
+setInterval(tick, 1000);
+window.addEventListener('hashchange', ()=>{ route(); if (!location.hash.includes('#map')) window.scrollTo(0,0); });
+
+/* ===========================================================
+   SEARCH
+   =========================================================== */
+const INDEX = [];
+CONTINENTS.forEach(ct=>{
+  INDEX.push({label:ct.name, sub:'CONTINENT', href:contHref(ct), rank:1});
+  ct.countries.forEach(co=>INDEX.push({label:co.name, sub:'COUNTRY · '+ct.name.toUpperCase(), href:countryHref(co), rank:co.detailed?0:2}));
+});
+ATLAS.forEach(s=>{
+  INDEX.push({label:s.name, sub:s.abbr+' · STATE', href:stateHref(s), rank:1});
+  s.statewide.forEach(p=>INDEX.push({label:p.title, sub:s.abbr+' · '+p.tag, href:stateHref(s), rank:0}));
+  s.cities.forEach(c=>INDEX.push({label:c.name, sub:s.abbr+' · CITY', href:cityHref(c), rank:1}));
+});
+const box = document.getElementById('search'), res = document.getElementById('results');
+function runSearch(){
+  const q = box.value.trim().toLowerCase();
+  if (q.length < 2){ res.classList.add('hidden'); return; }
+  const hits = INDEX.filter(e=>e.label.toLowerCase().includes(q))
+    .sort((a,b)=> a.rank-b.rank || a.label.toLowerCase().indexOf(q)-b.label.toLowerCase().indexOf(q) || a.label.localeCompare(b.label))
+    .slice(0,8);
+  res.innerHTML = hits.length
+    ? hits.map(h=>'<a href="'+h.href+'"><span>'+esc(h.label)+'</span><span class="r-sub">'+esc(h.sub)+'</span></a>').join('')
+    : '<a href="#/"><span>Nothing by that name</span></a>';
+  res.classList.remove('hidden');
+}
+box.addEventListener('input', runSearch);
+box.addEventListener('focus', runSearch);
+res.addEventListener('click', ()=>{ res.classList.add('hidden'); box.value=''; });
+document.addEventListener('click', e=>{ if (!e.target.closest('.searchwrap')) res.classList.add('hidden'); });
+box.addEventListener('keydown', e=>{ if (e.key === 'Escape'){ res.classList.add('hidden'); box.blur(); } });
+
+route();
+
+</script>
+</body>
+</html>
