@@ -143,13 +143,6 @@ html[data-theme="dark"] .sw i{background:#14110A;transform:translateX(11px)}
 .panel{border:1px solid var(--rule);border-radius:2px;background:var(--surface);overflow:hidden}
 .panel-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;
   padding:20px 24px;border-bottom:1px solid var(--rule-soft)}
-.plot{position:relative;height:min(58vw,520px);min-height:300px;background:var(--ground);
-  background-image:linear-gradient(to right,var(--grid) 1px,transparent 1px),linear-gradient(to bottom,var(--grid) 1px,transparent 1px);
-  background-size:64px 64px}
-.plot-in{position:absolute;inset:42px 56px}
-.dot{position:absolute;display:flex;align-items:center;gap:8px;transform:translate(-5px,-5px)}
-.dot b{font-family:var(--mono);font-size:10px;letter-spacing:.1em;font-weight:400;color:var(--ink);white-space:nowrap}
-.dot.off b{color:var(--ghost)}
 .places{display:flex;flex-wrap:wrap}
 .places-l{flex:1 1 280px;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--rule-soft)}
 .places-l a,.places-l span{display:flex;align-items:center;gap:12px;padding:15px 24px;border-bottom:1px solid var(--rule-soft);font-size:15px;color:var(--ink)}
@@ -222,3 +215,55 @@ html[data-theme="dark"]{--on-accent:#06252A;--accent-glow:rgba(88,206,212,.20)}
   .statusctl button{padding:0 10px;font-size:9px}
   .row-tags{width:100%}
 }
+
+/* ---- interactive world map ---- */
+.worldmap{position:relative;background:var(--ground);overflow:hidden;touch-action:none;
+  background-image:linear-gradient(to right,var(--grid) 1px,transparent 1px),linear-gradient(to bottom,var(--grid) 1px,transparent 1px);
+  background-size:52px 52px}
+.worldmap svg{display:block;width:100%;height:100%;cursor:grab}
+.worldmap svg.drag{cursor:grabbing}
+.worldmap .land path{fill:var(--rule-soft);stroke:var(--rule);stroke-width:.2;vector-effect:non-scaling-stroke}
+html[data-theme="dark"] .worldmap .land path{fill:#182029;stroke:#2B3640}
+.worldmap .pins circle{cursor:pointer;transition:opacity .15s ease}
+.worldmap .p-been{fill:var(--pin)}
+.worldmap .p-want{fill:var(--accent)}
+.worldmap .p-none{fill:none;stroke:var(--ghost);stroke-width:.9;vector-effect:non-scaling-stroke}
+.worldmap .halo{fill:var(--pin);opacity:.16}
+.worldmap .halo.w{fill:var(--accent)}
+.worldmap .pins text{font-family:var(--mono);fill:var(--ink);paint-order:stroke;
+  stroke:var(--ground);stroke-width:3px;stroke-linejoin:round;opacity:0;pointer-events:none;transition:opacity .2s ease}
+.worldmap.zoom1 .pins text.t1,.worldmap.zoom2 .pins text.t1,.worldmap.zoom2 .pins text.t2{opacity:1}
+.mapctl{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:6px;z-index:3}
+.mapctl button{width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;
+  background:var(--surface);color:var(--ink);border:1px solid var(--rule);border-radius:2px;font-size:17px;line-height:1}
+.mapctl button:hover{border-color:var(--pin)}
+.maphint{position:absolute;left:14px;bottom:14px;z-index:3;font-family:var(--mono);font-size:10px;
+  letter-spacing:.14em;color:var(--faint);background:var(--ground);border:1px solid var(--rule);
+  border-radius:999px;padding:7px 12px;pointer-events:none}
+.mapfilter{display:inline-flex;border:1px solid var(--rule);border-radius:999px;overflow:hidden}
+.mapfilter button{appearance:none;background:transparent;border:0;cursor:pointer;font-family:var(--mono);
+  font-size:10px;letter-spacing:.12em;color:var(--muted);padding:0 14px;height:36px}
+.mapfilter button + button{border-left:1px solid var(--rule)}
+.mapfilter button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
+
+/* ---- night rows and cards ---- */
+.board-r.night,.card.night{background:color-mix(in srgb,var(--ink) 7%,var(--surface))}
+html[data-theme="dark"] .board-r.night,html[data-theme="dark"] .card.night{background:#090D11}
+.board-r.night .board-t,.board-r.night .board-city span{color:var(--muted)}
+.nightdot{width:5px;height:5px;border-radius:999px;background:var(--ghost);display:inline-block;flex:0 0 auto}
+
+/* ---- click-to-add suggestions ---- */
+.sugs{display:flex;flex-wrap:wrap;gap:8px;padding-top:24px}
+.sug{display:inline-flex;align-items:center;gap:0;border:1px dashed var(--rule);border-radius:999px;overflow:hidden}
+.sug span{font-size:13px;color:var(--muted);padding:0 4px 0 14px;line-height:34px;white-space:nowrap}
+.sug button{appearance:none;background:transparent;border:0;cursor:pointer;color:var(--accent);
+  font-size:17px;line-height:1;width:34px;height:34px;display:flex;align-items:center;justify-content:center}
+.sug button:hover{background:var(--accent);color:var(--on-accent)}
+.sug.in{border-style:solid;border-color:var(--pin)}
+.sug.in span{color:var(--ink)}
+.added{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:16px 0;border-bottom:1px solid var(--rule)}
+.added-n{flex:999 1 240px;min-width:0;display:flex;align-items:center;gap:12px;font-size:17px}
+.rm{appearance:none;background:transparent;border:1px solid var(--rule);border-radius:999px;cursor:pointer;
+  color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.12em;height:36px;padding:0 12px}
+.rm:hover{color:var(--ink);border-color:var(--ink)}
+.navlinks a.on{color:var(--ink);font-weight:600}
