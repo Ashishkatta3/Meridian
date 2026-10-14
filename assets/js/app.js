@@ -45,7 +45,7 @@ const HOME_CONT = USA.continent;
 const ADD_KEY = 'meridian-added';
 let ADDED = [];
 try { ADDED = JSON.parse(localStorage.getItem(ADD_KEY) || '[]'); } catch(e){ ADDED = []; }
-const saveAdded = () => { try { localStorage.setItem(ADD_KEY, JSON.stringify(ADDED)); } catch(e){} };
+const saveAdded = () => { try { localStorage.setItem(ADD_KEY, JSON.stringify(ADDED)); } catch(e){} cloudPushSoon(); };
 const addedId = (co,kind,name) => 'add:'+co+':'+kind+':'+slug(name);
 const addedFor = co => ADDED.filter(a=>a.c === co);
 function addPlace(coSlug, kind, name, lat, lon, tz){
@@ -70,7 +70,7 @@ const ENT_KEY = 'meridian-entries';
 let ENTRIES = {};
 try { ENTRIES = JSON.parse(localStorage.getItem(ENT_KEY) || '{}'); } catch(e){ ENTRIES = {}; }
 const saveEntries = () => { try { localStorage.setItem(ENT_KEY, JSON.stringify(ENTRIES)); } catch(e){
-  alert('Your browser would not save that — you may be out of local storage.'); } };
+  alert('Your browser would not save that — you may be out of local storage.'); } cloudPushSoon(); };
 
 let PHOTO_DB = null;
 function photoDB(){
@@ -84,19 +84,27 @@ function photoDB(){
   });
   return PHOTO_DB;
 }
-async function photoPut(id, dataURL){
+async function photoPut(id, dataURL, localOnly){
   const db = await photoDB();
-  return new Promise((res,rej)=>{ const t = db.transaction('photos','readwrite');
+  await new Promise((res,rej)=>{ const t = db.transaction('photos','readwrite');
     t.objectStore('photos').put(dataURL, id); t.oncomplete = res; t.onerror = ()=>rej(t.error); });
+  if (!localOnly) cloudPutPhoto(id, dataURL);
 }
 async function photoGet(id){
-  const db = await photoDB();
-  return new Promise((res,rej)=>{ const t = db.transaction('photos','readonly');
-    const q = t.objectStore('photos').get(id); q.onsuccess = ()=>res(q.result); q.onerror = ()=>rej(q.error); });
+  try {
+    const db = await photoDB();
+    const local = await new Promise((res,rej)=>{ const t = db.transaction('photos','readonly');
+      const q = t.objectStore('photos').get(id); q.onsuccess = ()=>res(q.result); q.onerror = ()=>rej(q.error); });
+    if (local) return local;
+  } catch(e){}
+  const remote = await cloudGetPhoto(id);               // signed in on a new device
+  if (remote) { try { await photoPut(id, remote, true); } catch(e){} }
+  return remote;
 }
 async function photoDel(id){
   try { const db = await photoDB();
     const t = db.transaction('photos','readwrite'); t.objectStore('photos').delete(id); } catch(e){}
+  cloudDelPhoto(id);
 }
 /* shrink on the way in so a phone photo does not eat the quota */
 function readPhoto(file){
@@ -148,11 +156,134 @@ function setNote(scope, text){
   saveEntries();
 }
 
+/* ===========================================================
+   DATES, PREFERENCES AND THE WHOLE-JOURNAL EXPORT
+   =========================================================== */
+const DATE_KEY = 'meridian-dates', PREF_KEY = 'meridian-prefs';
+let DATES = {}, PREFS = {passport:'united-states', home:{name:'Dallas–Fort Worth', lat:32.78, lon:-96.80}};
+try { DATES = JSON.parse(localStorage.getItem(DATE_KEY) || '{}'); } catch(e){ DATES = {}; }
+try { PREFS = Object.assign(PREFS, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch(e){}
+
+const saveDates = () => { try { localStorage.setItem(DATE_KEY, JSON.stringify(DATES)); } catch(e){} cloudPushSoon(); };
+const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(PREFS)); } catch(e){} cloudPushSoon(); };
+function persistAllLocal(){
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(STATUS));
+    localStorage.setItem(ADD_KEY, JSON.stringify(ADDED));
+    localStorage.setItem(ENT_KEY, JSON.stringify(ENTRIES));
+    localStorage.setItem(DATE_KEY, JSON.stringify(DATES));
+    localStorage.setItem(PREF_KEY, JSON.stringify(PREFS));
+  } catch(e){}
+}
+const dateOf = id => DATES[id] || '';
+function setDate(id, v){
+  if (v) DATES[id] = v; else delete DATES[id];
+  saveDates();
+}
+const prettyDate = v => {
+  if (!v) return '';
+  const [y, m] = v.split('-');
+  if (!m) return y;
+  return new Date(+y, +m-1, 1).toLocaleDateString('en-US', {month:'short', year:'numeric'});
+};
+
+/* ---------- how far away is it, and do you need a visa ---------- */
+function greatCircle(a, b){
+  const R = 6371, r = Math.PI/180;
+  const dLat = (b.lat-a.lat)*r, dLon = (b.lon-a.lon)*r;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function flightEstimate(target){
+  const km = greatCircle(PREFS.home, target);
+  if (km < 60) return null;
+  const hrs = km/850 + 0.6;                       // cruise plus taxi, climb and descent
+  const h = Math.floor(hrs), m = Math.round((hrs-h)*60);
+  return {km: Math.round(km), miles: Math.round(km*0.621371),
+          text: (h?h+'h ':'') + (m?m+'m':''), direct: km < 13500};
+}
+const VISA_LABEL = {
+  home:     ['YOUR OWN COUNTRY', 'No entry requirements to worry about.'],
+  arrival:  ['VISA ON ARRIVAL',  'Issued at the border. Carry a passport photo, the fee in cash, and proof of onward travel.'],
+  evisa:    ['E-VISA',           'Applied for online before you fly. Usually a few days, occasionally a few weeks.'],
+  eta:      ['TRAVEL AUTHORISATION', 'A short online form, approved in minutes to a couple of days. Not a full visa.'],
+  required: ['VISA REQUIRED',    'Applied for in advance, often in person at an embassy or visa centre. Start early — several weeks is common.'],
+  closed:   ['ENTRY NOT PERMITTED', 'Entry is not currently available on this passport.']
+};
+function visaFor(countrySlug){
+  const table = VISA[PREFS.passport];
+  if (!table) return null;
+  let code = table[countrySlug];
+  if (!code) return null;
+  let via = null;
+  if (code.includes('|')){ const bits = code.split('|'); code = bits[0]; via = bits[1]; }
+  if (code.startsWith('free:')){
+    const days = code.slice(5);
+    return {kind:'free', head:'VISA FREE', body: days
+      ? 'Entry without a visa for up to ' + days + ' days.'
+      : 'Entry without a visa for short visits.', via};
+  }
+  const L = VISA_LABEL[code] || VISA_LABEL.required;
+  return {kind: code, head: L[0], body: L[1], via};
+}
+const passportName = () => (PASSPORTS.find(p=>p[0] === PREFS.passport) || ['','—'])[1];
+
+/* ---------- the guide: shipped profiles, overridden by admin edits ---------- */
+function profileOf(slug){
+  const base = PROFILE[slug] || {b:'', s:'', p:[], w:[]};
+  const over = (typeof GUIDE !== 'undefined' && GUIDE['country:'+slug]) || null;
+  return over ? Object.assign({}, base, over) : base;
+}
+
+/* ---------- export and import: your journal as one file ---------- */
+async function exportJournal(){
+  const ids = [];
+  Object.keys(ENTRIES).forEach(k=>{
+    if (Array.isArray(ENTRIES[k])) ENTRIES[k].forEach(e=>(e.ph||[]).forEach(p=>ids.push(p)));
+  });
+  const photos = {};
+  for (const id of [...new Set(ids)]){
+    const d = await photoGet(id);
+    if (d) photos[id] = d;
+  }
+  const blob = {
+    meridian: 2,
+    exported: new Date().toISOString(),
+    status: STATUS, added: ADDED, entries: ENTRIES, dates: DATES, prefs: PREFS, photos
+  };
+  const stamp = new Date().toISOString().slice(0,10);
+  offerFile('meridian-journal-' + stamp + '.json', JSON.stringify(blob), 'application/json');
+}
+async function importJournal(file, merge){
+  const text = await file.text();
+  let d;
+  try { d = JSON.parse(text); } catch(e){ return {error:'That file is not valid JSON.'}; }
+  if (!d || !d.meridian) return {error:'That does not look like a Meridian export.'};
+  if (merge){
+    Object.assign(STATUS, d.status || {});
+    Object.assign(DATES, d.dates || {});
+    Object.assign(ENTRIES, d.entries || {});
+    const have = new Set(ADDED.map(a=>a.id));
+    (d.added || []).forEach(a=>{ if (!have.has(a.id)) ADDED.push(a); });
+  } else {
+    STATUS = d.status || {}; DATES = d.dates || {};
+    ENTRIES = d.entries || {}; ADDED = d.added || [];
+  }
+  if (d.prefs) PREFS = Object.assign(PREFS, d.prefs);
+  let restored = 0;
+  for (const [id, dataURL] of Object.entries(d.photos || {})){
+    try { await photoPut(id, dataURL); restored++; } catch(e){}
+  }
+  persistAllLocal();
+  cloudPushSoon();
+  return {ok:true, photos:restored};
+}
+
 /* ---------- been / want to go / no mark ---------- */
 const STORE_KEY = 'meridian-status';
 let STATUS = {};
 try { STATUS = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch(e){ STATUS = {}; }
-const saveStatus = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(STATUS)); } catch(e){} };
+const saveStatus = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(STATUS)); } catch(e){} cloudPushSoon(); };
 const SEED = {};
 ALL_CITIES.forEach(c=>{ if (c.seed !== 'none') SEED[c.id] = c.seed; });
 ATLAS.forEach(s=>s.statewide.forEach(p=>{ if (p.seed !== 'none') SEED[p.id] = p.seed; }));
@@ -312,12 +443,12 @@ function csvOf(rows){
   const q = v => '"'+String(v==null?'':v).replace(/"/g,'""')+'"';
   return ['Name,Location,Category,Status,Notes'].concat(rows.map(r=>r.map(q).join(','))).join('\r\n');
 }
-async function offerFile(filename, text){
+async function offerFile(filename, text, mime){
   let dl = null;
   try { if (window.claude && claude.use) dl = await claude.use('downloads'); } catch(e){}
   if (dl){ try { await dl.save({filename, data:text}); } catch(e){} return; }
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text],{type:'text/csv'}));
+  a.href = URL.createObjectURL(new Blob([text],{type: mime || 'text/csv'}));
   a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
 }
@@ -366,14 +497,26 @@ const ICON = {
   down:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 3.5v12"/><path d="m7.4 11.2 4.6 4.6 4.6-4.6"/><path d="M4.5 19.5h15"/></svg>',
   compass:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15 9-2 4-4 2 2-4Z"/></svg>',
   check:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 12.8 5 5 10-11"/></svg>',
-  flag:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 21V4.2M5.5 5.2h12l-2.4 4 2.4 4h-12"/></svg>'
+  flag:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 21V4.2M5.5 5.2h12l-2.4 4 2.4 4h-12"/></svg>',
+  star:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.6 14.6 9l5.9.8-4.3 4.1 1.1 5.8-5.3-2.9-5.3 2.9 1.1-5.8L3.5 9.8 9.4 9Z"/></svg>'
 };
-function ctl(id, label){
+function ctl(id, label, withDate){
   const v = statusOf(id);
-  return '<span class="statusctl" data-id="'+id+'" role="group" aria-label="'+esc(label||'Status')+'">'
+  const box = '<span class="statusctl" data-id="'+id+'" role="group" aria-label="'+esc(label||'Status')+'">'
     + '<button type="button" class="been" data-v="been" aria-pressed="'+(v==='been')+'">'+ICON.check+'BEEN</button>'
     + '<button type="button" class="want" data-v="want" aria-pressed="'+(v==='want')+'">'+ICON.flag+'WANT</button></span>';
+  if (!withDate || v !== 'been') return box;
+  return '<span class="ctlwrap">'+box
+    + '<label class="whenbox"><span class="hidden">When did you go</span>'
+    + '<input type="month" data-when="'+id+'" value="'+esc(dateOf(id))+'" max="2099-12"></label></span>';
 }
+const whenTag = id => dateOf(id) ? '<span class="chip warm">'+esc(prettyDate(dateOf(id)))+'</span>' : '';
+document.addEventListener('change', e=>{
+  const w = e.target.closest('[data-when]');
+  if (!w) return;
+  setDate(w.dataset.when, w.value);
+  rerender();
+});
 document.addEventListener('click', e=>{
   const btn = e.target.closest('.statusctl button');
   if (btn){
@@ -393,6 +536,84 @@ document.addEventListener('click', e=>{
   if (rm){ e.preventDefault(); removePlace(rm.dataset.rm); return rerender(); }
 });
 function rerender(){ const y = window.scrollY; route(); window.scrollTo(0, y); }
+
+document.addEventListener('click', async e=>{
+  const a = e.target.closest('[data-auth]');
+  if (a){
+    e.preventDefault();
+    const box = document.querySelector('[data-ed="auth"]');
+    const val = sel => { const el = box && box.querySelector(sel); return el ? el.value.trim() : ''; };
+    const mode = a.dataset.auth;
+    if (mode === 'mode-up'){ AUTHMODE = 'up'; AUTHMSG = ''; return rerender(); }
+    if (mode === 'mode-in'){ AUTHMODE = 'in'; AUTHMSG = ''; return rerender(); }
+    if (mode === 'out'){ await cloudSignOut(); return; }
+    if (mode === 'reset'){ const r = await cloudReset(val('.f-e')); AUTHMSG = r.error || r.note; return rerender(); }
+    a.disabled = true; AUTHMSG = 'Working…'; 
+    const r = mode === 'up' ? await cloudSignUp(val('.f-e'), val('.f-p2'), val('.f-n'))
+                            : await cloudSignIn(val('.f-e'), val('.f-p2'));
+    AUTHMSG = r.error || r.note || '';
+    return rerender();
+  }
+  const ex = e.target.closest('[data-export]');
+  if (ex){ e.preventDefault(); ex.disabled = true; await exportJournal(); ex.disabled = false; return; }
+
+  const gs = e.target.closest('[data-guidesave]');
+  if (gs){
+    e.preventDefault();
+    const sl = gs.dataset.guidesave, box = gs.closest('.editor');
+    const spots = box.querySelector('.f-g2').value.split('\n').map(l=>l.trim()).filter(Boolean)
+      .map(l=>{ const i = l.indexOf('|'); return i < 0 ? [l, ''] : [l.slice(0,i).trim(), l.slice(i+1).trim()]; });
+    const body = {b: box.querySelector('.f-d').value.trim(), s: box.querySelector('.f-t').value.trim(),
+                  p: spots, w: (PROFILE[sl]||{}).w || []};
+    const r = await guideSave('country:'+sl, body);
+    delete PENDING['guide|'+sl];
+    if (r && r.error) alert(r.error);
+    return rerender();
+  }
+  const gr = e.target.closest('[data-guidereset]');
+  if (gr){
+    e.preventDefault();
+    await guideClear('country:'+gr.dataset.guidereset);
+    delete PENDING['guide|'+gr.dataset.guidereset];
+    return rerender();
+  }
+  const gopen = e.target.closest('[data-guide]');
+  if (gopen){ e.preventDefault(); PENDING['guide|'+gopen.dataset.guide] = {t:'',d:'',g:'',keep:[],add:[]}; return rerender(); }
+});
+
+document.addEventListener('change', async e=>{
+  const pf = e.target.closest('[data-pref]');
+  if (pf){ PREFS[pf.dataset.pref] = pf.value; savePrefs(); return rerender(); }
+  const im = e.target.closest('[data-import]');
+  if (im && im.files && im.files[0]){
+    const replace = im.dataset.import === 'replace';
+    if (replace && !confirm('Replace everything currently on this device with the contents of that file?')) return;
+    const r = await importJournal(im.files[0], !replace);
+    alert(r.error ? r.error : 'Journal restored' + (r.photos ? ' with ' + r.photos + ' photo' + (r.photos===1?'':'s') : '') + '.');
+    return rerender();
+  }
+});
+
+/* home airport picker: every capital, plus every US city we know */
+function wireHomePort(){
+  const box = document.getElementById('homeport');
+  if (!box) return;
+  const ac = document.getElementById('homeac');
+  const pool = ALL_COUNTRIES.map(c=>[c.capital + ', ' + c.name, c.lat, c.lon])
+    .concat(ALL_CITIES.map(c=>[c.name + ', ' + c.state.abbr, c.lat, c.lon]));
+  box.addEventListener('input', ()=>{
+    const q = box.value.trim().toLowerCase();
+    if (q.length < 2){ ac.classList.add('hidden'); return; }
+    const hits = pool.filter(r=>r[0].toLowerCase().includes(q)).slice(0,7);
+    if (!hits.length){ ac.classList.add('hidden'); return; }
+    ac.innerHTML = hits.map(r=>'<button type="button">'+esc(r[0])+'</button>').join('');
+    ac.classList.remove('hidden');
+    [...ac.children].forEach((b,i)=>b.addEventListener('click', ()=>{
+      PREFS.home = {name:hits[i][0], lat:hits[i][1], lon:hits[i][2]};
+      savePrefs(); rerender();
+    }));
+  });
+}
 
 /* ===========================================================
    SHARED MARKUP
@@ -748,7 +969,7 @@ function placeCard(o){
     + '<a class="go" href="'+o.href+'" style="display:flex;flex-direction:column;gap:7px">'
     + '<span class="card-t"'+(o.small?' style="font-size:26px"':'')+'>'+esc(o.name)+'</span>'
     + '<span class="lab-s"'+(s==='none'?' style="color:var(--ghost)"':'')+'>'+o.sub+'</span></a>'
-    + '<span class="card-foot">'+pinFor(s)+ctl(o.id, o.name)+'</span></div>';
+    + '<span class="card-foot">'+pinFor(s)+whenTag(o.id)+ctl(o.id, o.name)+'</span></div>';
 }
 function cityCard(c){
   const s = statusOf(c.id), night = isNightAt(c.lat,c.lon);
@@ -776,13 +997,21 @@ function viewHome(){
       + '<span class="board-t" data-tz="'+tz+'">'+fmtTime(now,tz)+'</span></span></a>';
   }).join('');
 
-  const feat = FEATURED.map(k=>{
-    const c = CITY_BY_KEY[k]; if (!c) return '';
+  /* the three most recent things you marked, newest date first, with the
+     shipped picks only as a fallback for a brand-new browser */
+  const dated = everything().filter(x=>statusOf(x.id) === 'been' && dateOf(x.id))
+    .sort((a,b)=>dateOf(b.id).localeCompare(dateOf(a.id)));
+  const yours = dated.length ? dated.slice(0,3)
+    : everything().filter(x=>x.kind === 'City' && statusOf(x.id) === 'been').slice(0,3);
+  const recent = yours.length >= 3 ? yours.map(x=>x.id) : null;
+  const feat = (recent || FEATURED).map(k=>{
+    const c = CITY_BY_KEY[k] || CITY_BY_KEY[String(k).replace(/^city:/,'')]; if (!c) return '';
     const night = isNightAt(c.lat,c.lon);
     return '<div class="card'+(night?' night':'')+'" style="min-height:200px"><a class="go" href="'+cityHref(c)+'" style="display:flex;flex-direction:column;gap:8px">'
       + '<span class="lab-s">'+esc(c.state.name).toUpperCase()+'</span>'
       + '<span class="card-t" style="font-size:34px">'+esc(c.name)+'</span>'
-      + '<span class="lab-s"><span data-tz="'+c.tz+'">'+fmtTime(now,c.tz)+'</span> · '+c.todo.length+' THINGS TO DO</span></a>'
+      + '<span class="lab-s"><span data-tz="'+c.tz+'">'+fmtTime(now,c.tz)+'</span>'
+      + (dateOf(c.id) ? ' · ' + esc(prettyDate(dateOf(c.id)).toUpperCase()) : ' · '+entriesOf(c.key,'todo').length+' THINGS TO DO')+'</span></a>'
       + '<span class="card-foot"><span class="chip warm" data-wx="'+c.key+'" data-night="'+(night?1:0)+'">'+glyph(night?'night':'clear',14)+'<span>—</span></span>'
       + ctl(c.id, c.name)+'</span></div>';
   }).join('');
@@ -818,7 +1047,7 @@ function viewHome(){
     + '<a class="btn ghost" href="#/map">Open the full map</a></div>'
     + worldMap(mapPoints('all'), 460)+'</div></div>'
 
-    + '<div class="sec">'+secHead('Most recently added', C.cities+' CITIES LOGGED')
+    + '<div class="sec">'+secHead(recent ? 'Where you were last' : 'Most recently added', C.cities+' CITIES LOGGED')
     + '<div class="grid g-wide" style="padding-top:28px">'+feat+'</div></div>'
 
     + '<div class="sec" id="continents">'+secHead('Start at the top','CONTINENT → COUNTRY → STATE → CITY')
@@ -856,11 +1085,11 @@ function viewList(kind){
   const groups = order.map(k=>[k, items.filter(i=>i.kind === k)]).filter(g=>g[1].length);
   const body = groups.length ? groups.map(([k, list])=>
       '<div class="sec">'+secHead(k === 'Park or region' ? 'Parks and regions' : k+'s', pad2(list.length))
-      + list.map(i=>'<div class="added"><span class="added-n">'+pinFor(kind)
+      + list.slice().sort((a,b)=>(dateOf(b.id)||'').localeCompare(dateOf(a.id)||''))
+        .map(i=>'<div class="added"><span class="added-n">'+pinFor(kind)
         + '<a href="'+i.href+'" style="color:var(--ink)">'+esc(i.name)+'</a>'
         + (i.sub ? '<span class="lab-s">'+esc(i.sub).toUpperCase()+'</span>' : '')+'</span>'
-        + (i.tz ? '<span class="mono" style="font-size:13px" data-tz="'+i.tz+'">'+fmtTime(new Date(),i.tz)+'</span>' : '')
-        + ctl(i.id, i.name)+'</div>').join('')+'</div>').join('')
+        + ctl(i.id, i.name, kind === 'been')+'</div>').join('')+'</div>').join('')
     : blank(kind === 'been' ? 'Nothing marked yet' : 'Nothing on the list yet',
         'Open any continent, country, state or city and use the '+(kind==='been'?'BEEN':'WANT')+' button. Everything you mark collects here.');
   return crumbs([['World','#/continents'],[title,'']])
@@ -904,8 +1133,9 @@ function viewCountry(co){
   const hero = '<div class="wrap"><div style="padding-top:36px"><div class="hero"><div class="hero-main">'
     + '<h1 class="title-xl">'+esc(co.name)+'</h1>'
     + '<span class="lab">'+esc(co.continent.name).toUpperCase()+' · CAPITAL '+esc(co.capital).toUpperCase()+' · '+coord(co.lat,co.lon)+'</span>'
+    + (profileOf(co.slug).b ? '<p class="lede">'+esc(profileOf(co.slug).b)+'</p>' : '')
     + ro.html
-    + '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">'+ctl(co.id, co.name)
+    + '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">'+ctl(co.id, co.name, true)
     + '<span class="chip warm">'+glyph(ro.night?'night':'clear',14)+(ro.night?'IT IS NIGHT IN ':'IT IS DAYTIME IN ')+esc(co.capital).toUpperCase()+'</span></div>'
     + '<p class="note">The clock and the sky above are '+esc(co.capital)+'\u2019s own, and this page follows them into dark mode after sunset there.</p>'
     + '</div><div class="hero-side"><div class="board"><div class="board-h"><span class="lab">YOUR PLACES HERE</span>'
@@ -928,9 +1158,20 @@ function viewCountry(co){
       + '<div class="grid g-cities" style="padding-top:28px">'+cards+'</div></div></div>';
   }
 
+  const pr = profileOf(co.slug);
   const sug = SUGGEST[co.slug] || [[],[]];
   const mine = addedFor(co.slug);
   const have = new Set(mine.map(a=>a.id));
+  const spots = (pr.p || []).map(sp=>{
+    const n = sp[0], line = sp[1], id = addedId(co.slug, 'city', n), inList = have.has(id);
+    return '<div class="row"><span class="row-n">'+ICON.star+'</span>'
+      + '<div class="row-b"><span class="row-t">'+esc(n)+'</span><p class="row-d">'+esc(line)+'</p></div>'
+      + '<span class="row-tags">'+(inList
+          ? '<span class="chip warm">ON YOUR LIST</span>'
+          : '<button class="tbtn" data-add="'+esc(n)+'" data-co="'+co.slug+'" data-kind="city" data-lat="'+co.lat
+            +'" data-lon="'+co.lon+'" data-tz="'+esc(co.tz)+'">+ ADD TO MY PLACES</button>')
+      + '</span></div>';
+  }).join('');
   const sugList = list => list.map(r=>{
     const [n, lat, lon] = r, id = addedId(co.slug, 'region', n);
     if (have.has(id)) return '';
@@ -947,6 +1188,11 @@ function viewCountry(co){
     : blank('Nothing added yet','Type a place below, or take one of the suggested regions. Each gets its own page with a clock, a description, things to do and where you ate.');
 
   return head + hero + '<div class="wrap">'
+    + '<div class="sec">'+secHead('Getting there', 'FLIGHT · VISA · SEASON')+intelPanel(co)+'</div>'
+    + '<div class="sec">'+secHead('Well known for', pad2((pr.p||[]).length)+' PLACES')
+    + (spots || blank('Nothing written yet','An admin can add the highlights for this country.'))
+    + adminNote(co) + '</div>'
+    + pairPanel(co)
     + '<div class="sec">'+secHead('Your places in '+esc(co.name), pad2(mine.length))+mineHTML
     + '<div class="addbox"><label class="hidden" for="newplace">Add a place</label>'
     + '<input id="newplace" type="text" autocomplete="off" placeholder="Add a place in '+esc(co.name)+'…" data-place-co="'+co.slug+'">'
@@ -955,6 +1201,53 @@ function viewCountry(co){
     + (sug[0].length ? '<div class="sec">'+secHead('Regions of '+esc(co.name), 'CLICK TO ADD')
         + '<div class="sugs">'+sugList(sug[0])+'</div></div>' : '')
     + '</div>';
+}
+
+/* ---------- what it takes to get there ---------- */
+function intelPanel(co){
+  const pr = profileOf(co.slug);
+  const fl = flightEstimate(co);
+  const v  = visaFor(co.slug);
+  const cells = [];
+  if (fl) cells.push(['FROM ' + esc(PREFS.home.name).toUpperCase(), fl.text,
+    fl.miles.toLocaleString() + ' miles · ' + (fl.direct ? 'within nonstop range' : 'expect a connection')]);
+  else cells.push(['FROM HOME', 'You are here', 'Change your home airport in Account.']);
+  if (v) cells.push(['ON A ' + esc(passportName()).toUpperCase() + ' PASSPORT', v.head,
+    v.body + (v.via ? ' Follows ' + esc(v.via.replace(/-/g,' ')) + '\u2019s rules.' : '')]);
+  if (pr.s) cells.push(['BEST TIME TO GO', pr.s, 'Shoulder months are usually cheaper and quieter.']);
+  return '<div class="intel">' + cells.map(c=>
+    '<div class="intel-c"><span class="lab">'+c[0]+'</span>'
+    + '<span class="intel-v">'+esc(c[1])+'</span>'
+    + '<span class="note">'+c[2]+'</span></div>').join('') + '</div>'
+  + (v ? '<p class="note" style="padding-top:14px">Visa category from the passport-index dataset — a starting point, not legal advice. '
+       + 'Processing times move constantly, so check the official portal for '+esc(co.name)+' before booking. '
+       + '<a href="https://www.google.com/search?q='+encodeURIComponent('official visa '+co.name+' for '+passportName()+' citizens')
+       + '" target="_blank" rel="noopener">Find the official source</a>.</p>' : '');
+}
+function pairPanel(co){
+  const list = (profileOf(co.slug).w || []).map(sl=>CO_BY_SLUG[sl]).filter(Boolean);
+  if (!list.length) return '';
+  return '<div class="sec">'+secHead('Goes well with', 'ON THE SAME TRIP')
+    + '<div class="grid g-cities" style="padding-top:28px">'
+    + list.map(c=>placeCard({name:c.name, id:c.id, href:countryHref(c), status:countryStatus(c), small:true, min:150,
+        sub: Math.round(greatCircle(co, c)*0.621371).toLocaleString() + ' MI FROM ' + esc(co.name).toUpperCase()})).join('')
+    + '</div></div>';
+}
+/* admins can rewrite any of the guide text; everyone else just reads it */
+function adminNote(co){
+  if (typeof CLOUD === 'undefined' || !CLOUD.admin) return '';
+  const open = !!PENDING['guide|'+co.slug];
+  if (!open) return '<div style="padding-top:20px"><button class="btn ghost" data-guide="'+co.slug+'">Edit this country as admin</button></div>';
+  const pr = profileOf(co.slug);
+  return '<div class="editor" data-ed="guide|'+co.slug+'">'
+    + '<span class="lab">ADMIN · THIS CHANGES THE SITE FOR EVERYONE</span>'
+    + '<textarea class="f-d" rows="2" placeholder="One line on what this country is">'+esc(pr.b||'')+'</textarea>'
+    + '<input class="f-t" type="text" placeholder="Best time to go" value="'+esc(pr.s||'')+'">'
+    + '<textarea class="f-g2" rows="6" placeholder="One spot per line, as: Name | one short line">'
+    + esc((pr.p||[]).map(x=>x[0]+' | '+x[1]).join('\n'))+'</textarea>'
+    + '<span class="edrow"><button class="btn" data-guidesave="'+co.slug+'">Publish to everyone</button>'
+    + '<button class="btn ghost" data-cancel="guide|'+co.slug+'">Cancel</button>'
+    + '<button class="rm" data-guidereset="'+co.slug+'">Reset to shipped text</button></span></div>';
 }
 
 /* ---------- a place you added yourself ---------- */
@@ -1041,6 +1334,71 @@ function viewCity(c){
   + '</div></div>';
 }
 
+/* ---------- account: who you are, and where the journal lives ---------- */
+let AUTHMODE = 'in', AUTHMSG = '';
+function viewAccount(){
+  routeIsNight = isNightAt(38,-97);
+  const C = counts();
+  const signedIn = CLOUD.on && CLOUD.user;
+  let panel;
+  if (!CLOUD.on){
+    panel = blank('This copy saves to one browser only',
+      'Everything you mark and write lives in this browser. To get accounts and a journal that follows you between devices, '
+      + 'add free Supabase keys to <code>assets/js/config.js</code> and run <code>supabase/schema.sql</code>. '
+      + 'The README walks through it in about ten minutes.');
+  } else if (signedIn){
+    panel = '<div class="panel"><div class="panel-head" style="border:0">'
+      + '<span style="display:flex;flex-direction:column;gap:6px">'
+      + '<span class="card-t" style="font-size:26px">'+esc(CLOUD.name || CLOUD.user.email)+'</span>'
+      + '<span class="note">'+(CLOUD.admin ? 'Admin — your edits to the guide change the site for everyone.' : 'Signed in. Your journal syncs to every device you sign in on.')
+      + (CLOUD.note ? ' <strong>'+esc(CLOUD.note)+'</strong>' : '')+'</span></span>'
+      + '<button class="btn ghost" data-auth="out">Sign out</button></div></div>';
+  } else {
+    const t = AUTHMODE === 'up';
+    panel = '<div class="editor" data-ed="auth">'
+      + '<span class="lab">'+(t?'CREATE AN ACCOUNT':'SIGN IN')+'</span>'
+      + (t?'<input class="f-n" type="text" placeholder="Your name" autocomplete="name">':'')
+      + '<input class="f-e" type="email" placeholder="Email" autocomplete="username">'
+      + '<input class="f-p2" type="password" placeholder="Password" autocomplete="'+(t?'new-password':'current-password')+'">'
+      + (AUTHMSG ? '<p class="note" style="color:var(--warm)">'+esc(AUTHMSG)+'</p>' : '')
+      + '<span class="edrow"><button class="btn" data-auth="'+(t?'up':'in')+'">'+(t?'Create account':'Sign in')+'</button>'
+      + '<button class="btn ghost" data-auth="'+(t?'mode-in':'mode-up')+'">'+(t?'I already have one':'Create an account')+'</button>'
+      + (t?'':'<button class="rm" data-auth="reset">Forgot password</button>')+'</span></div>';
+  }
+
+  const passportOpts = PASSPORTS.map(pp=>'<option value="'+pp[0]+'"'+(PREFS.passport===pp[0]?' selected':'')+'>'+esc(pp[1])+'</option>').join('');
+  return crumbs([['World','#/continents'],['Account','']])
+  + '<div class="wrap"><div style="padding-top:36px"><h1 class="title-l">Account</h1>'
+  + '<p class="lede" style="padding-top:14px">Where your journal is kept, and the two settings that drive flight times and visa rules.</p></div>'
+  + '<div class="sec">'+secHead('Your journal', signedIn ? 'SYNCED' : 'THIS BROWSER')+'<div style="padding-top:24px">'+panel+'</div></div>'
+
+  + '<div class="sec">'+secHead('Travel settings','USED ON EVERY COUNTRY PAGE')
+  + '<div class="setgrid">'
+  + '<label class="setbox"><span class="lab">PASSPORT</span>'
+  + '<select data-pref="passport">'+passportOpts+'</select>'
+  + '<span class="note">Decides the visa line on every country page.</span></label>'
+  + '<label class="setbox"><span class="lab">FLYING FROM</span>'
+  + '<input type="text" id="homeport" value="'+esc(PREFS.home.name)+'" placeholder="Your home city">'
+  + '<span class="note">Type a city and pick a match; flight times are measured from here.</span>'
+  + '<span class="ac hidden" id="homeac"></span></label>'
+  + '</div></div>'
+
+  + '<div class="sec">'+secHead('Backup','KEEP A COPY')
+  + '<div class="setgrid" style="padding-top:24px">'
+  + '<div class="setbox"><span class="card-t" style="font-size:22px">Export everything</span>'
+  + '<span class="note">One JSON file with every mark, date, entry, note and photo. Keep it somewhere safe.</span>'
+  + '<button class="btn" data-export="1">'+ICON.down+'Download my journal</button></div>'
+  + '<div class="setbox"><span class="card-t" style="font-size:22px">Restore from a file</span>'
+  + '<span class="note">Merge adds anything missing. Replace wipes what is here first.</span>'
+  + '<span class="edrow"><label class="filebtn">Choose a file<input type="file" accept="application/json" data-import="merge"></label>'
+  + '<label class="filebtn">Replace<input type="file" accept="application/json" data-import="replace"></label></span></div>'
+  + '</div></div>'
+
+  + '<div class="sec">'+secHead('Your numbers','')
+  + '<div class="stats">'+stat(C.continents,'CONTINENTS')+stat(C.countries,'COUNTRIES')+stat(C.states,'STATES')
+  + stat(C.cities,'CITIES')+stat(C.places,'PARKS &amp; REGIONS')+stat(C.wish,'ON THE LIST')+'</div></div></div>';
+}
+
 function viewMissing(){
   routeIsNight = isNightAt(38,-97);
   return '<div class="wrap" style="padding-top:80px"><h1 class="title-l">No page at that address</h1>'
@@ -1062,6 +1420,7 @@ function route(){
   else if (first === 'continents'){ html = viewHome(); points = boardPoints(); scrollTo = 'continents'; }
   else if (first === 'map'){ html = viewMap(); title = 'The map — Meridian'; }
   else if (first === 'been' || first === 'want'){ html = viewList(first); title = (first==='been'?'Been there':'Want to go')+' — Meridian'; }
+  else if (first === 'account'){ html = viewAccount(); title = 'Account — Meridian'; }
   else {
     const ct = CONT_BY_SLUG[first];
     if (!ct) html = viewMissing();
@@ -1098,7 +1457,7 @@ function route(){
   document.getElementById('footnote').textContent = foot;
   document.querySelectorAll('.navlinks a[data-nav]').forEach(a=>
     a.classList.toggle('on', a.dataset.nav === (first || 'home')));
-  applyTheme(); tick(); wireMaps(); paintPhotos(); wireAddBox();
+  applyTheme(); tick(); wireMaps(); paintPhotos(); wireAddBox(); wireHomePort(); paintAuthState();
   loadWeather(points);
   lastRoute = raw;
 }
@@ -1140,6 +1499,14 @@ function wireAddBox(){
     const hits = match();
     commit(hits.find(r=>r[0].toLowerCase() === box.value.trim().toLowerCase()) || hits[0] || null);
   });
+}
+function paintAuthState(){
+  const link = document.querySelector('[data-nav="account"]');
+  if (!link) return;
+  if (!CLOUD.on) link.textContent = 'Account';
+  else if (CLOUD.state === 'syncing') link.textContent = 'Syncing…';
+  else if (CLOUD.user) link.textContent = (CLOUD.name || CLOUD.user.email).split('@')[0] + (CLOUD.admin ? ' ·admin' : '');
+  else link.textContent = 'Sign in';
 }
 const boardPoints = () => BOARD.map((b,i)=>({key:'board'+i, lat:b[2], lon:b[3]}));
 function tick(){
