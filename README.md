@@ -8,6 +8,17 @@ No build step, no framework, no dependencies. Three files and a stylesheet.
 
 ---
 
+## Two ways to run this
+
+**Local only (default).** Clone, host, done. Everything you mark and write is
+saved in that one browser. No account, no server, nothing leaves the page.
+
+**With accounts (optional).** Add free Supabase keys and the site gains sign-in,
+passwords, an admin role, and a journal that follows you to any device. Takes
+about ten minutes — see *Accounts and the database* below.
+
+---
+
 ## Put it on GitHub Pages
 
 1. Make a new repository and upload everything in this folder (keep the structure).
@@ -31,6 +42,12 @@ python3 -m http.server 8000
 
 ```
 index.html              page shell — nav, footer, nothing else
+assets/js/config.js     YOUR SUPABASE KEYS. Blank = local-only mode.
+assets/js/cloud.js      accounts, sync and the admin guide. Dormant without keys.
+assets/js/visa.js       generated: visa rules for 16 passports x 179 countries
+assets/js/profile.js    the guide: a blurb, a season, 4 spots and trip pairings
+                        for all 179 countries — 716 places in total
+supabase/schema.sql     run this once in the Supabase SQL editor
 assets/css/styles.css   the whole design: tokens, light + dark, every component
 assets/js/data.js       YOUR DATA. The only file you need to edit.
 assets/js/world.js      generated: 179 countries, each with its capital's
@@ -115,6 +132,56 @@ projection, so there is no tile server, no API key and no network call.
 
 ---
 
+## Accounts and the database
+
+Without this the site works fine — it just cannot know who you are.
+
+1. Create a free project at [supabase.com](https://supabase.com). The free tier
+   covers 50,000 monthly users, 500MB of database and 1GB of photos.
+2. Open **SQL Editor → New query**, paste the whole of `supabase/schema.sql`,
+   and run it. That creates the tables, the security policies and the photo bucket.
+3. Copy **Project Settings → API → Project URL** and the **anon public** key into
+   `assets/js/config.js`.
+4. Reload the site, open **Account**, and create your account.
+
+The anon key is designed to be public and is safe to commit. It grants nothing on
+its own — the row-level security policies in the schema are what actually guard
+the data, and they are enforced by Postgres, not by the JavaScript. A tampered
+browser still cannot read another person's journal.
+
+**Email confirmation** is on by default in Supabase. For a private site, turn it
+off under Authentication → Providers → Email so people can sign in immediately.
+
+### Becoming an admin
+
+Admin cannot be granted from the browser, by design. Sign up through the site
+first, then run this once in the SQL editor:
+
+```sql
+update public.profiles set is_admin = true
+where id = (select id from auth.users where email = 'you@example.com');
+```
+
+An admin sees an **Edit this country as admin** button on every country page.
+Edits there go to the shared `guide` table and change the site for everyone —
+the blurb, the best season, and the list of well-known spots. Everyone else
+reads the same guide but can only mark and write in their own journal.
+
+### What lives where
+
+| | |
+|---|---|
+| The atlas — countries, cities, coordinates, visa rules, the guide | Shipped in the JS files, same for everyone |
+| Admin edits to the guide | `guide` table, shared, admin-writable |
+| Your marks, dates, places, entries and notes | `vault` table, one row, yours only |
+| Your photos | Storage bucket, in a folder only you can open |
+
+Your whole journal is a single JSON document in one row. Signing in pulls it,
+every change pushes it back a second later. One row and one writer means there
+is no half-synced state to debug.
+
+---
+
 ## Been / want to go
 
 Every place carries a two-button control: **BEEN** and **WANT**. Click one to set
@@ -128,6 +195,12 @@ column in the CSV export.
 States, countries and continents inherit upward: a state shows as *been* when any
 city or park inside it is, unless you set it yourself.
 
+### Backing it up
+
+**Account → Export** writes one JSON file containing every mark, date, entry,
+note and photo. Import merges it back, or replaces what is there. Do this even
+if you are signed in — a local file is the only backup nobody can revoke.
+
 To wipe everything and start over, run this in the browser console:
 
 ```js
@@ -137,6 +210,28 @@ localStorage.removeItem('meridian-entries');   // your entries and notes
 indexedDB.deleteDatabase('meridian-photos');   // your photos
 location.reload();
 ```
+
+---
+
+## Trip planning
+
+Every country page answers the three questions you actually ask before booking:
+
+**How far is it** — a nonstop-equivalent flight time from your home city,
+calculated great-circle from its coordinates. Set your home city in Account.
+
+**Do I need a visa** — the requirement for your passport, from the
+[passport-index dataset](https://github.com/ilyankou/passport-index-dataset),
+covering 16 common passports. It gives you the *category* — visa free, visa on
+arrival, eVisa, travel authorisation or full visa — plus what that category
+usually involves, and a link to find the official portal.
+
+This is deliberately a category and not a processing time. Those change
+constantly and country by country; a number here would be wrong within months
+and could cost someone a trip. Check the official source before you book.
+
+**When to go** — the best months, and which countries combine well with it on
+one trip, with the distance between them.
 
 ---
 
