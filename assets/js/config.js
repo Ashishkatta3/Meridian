@@ -14,6 +14,6 @@
    schema.sql are what actually guard the data.
    =========================================================== */
 window.MERIDIAN_CONFIG = {
-  supabaseUrl: "",      // e.g. "https://abcdefgh.supabase.co"
-  supabaseAnonKey: ""   // the long "anon public" key
+  supabaseUrl: "https://hciogvlecbfvngutbiuu.supabase.co",      // e.g. "https://abcdefgh.supabase.co"
+  supabaseAnonKey: "sb_publishable_3PCTm7xH6IejrXq8RlLNsA_3-0d3psl"   // the long "anon public" key
 };
