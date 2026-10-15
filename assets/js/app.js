@@ -160,7 +160,9 @@ function setNote(scope, text){
    DATES, PREFERENCES AND THE WHOLE-JOURNAL EXPORT
    =========================================================== */
 const DATE_KEY = 'meridian-dates', PREF_KEY = 'meridian-prefs';
-let DATES = {}, PREFS = {passport:'united-states', home:{name:'Dallas–Fort Worth', lat:32.78, lon:-96.80}};
+let DATES = {}, PREFS = {passport:'united-states',
+  home:{name:'Dallas–Fort Worth', lat:32.78, lon:-96.80, co:'united-states'},
+  homeCountry:'', livingCountry:''};
 try { DATES = JSON.parse(localStorage.getItem(DATE_KEY) || '{}'); } catch(e){ DATES = {}; }
 try { PREFS = Object.assign(PREFS, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch(e){}
 
@@ -173,8 +175,23 @@ function persistAllLocal(){
     localStorage.setItem(ENT_KEY, JSON.stringify(ENTRIES));
     localStorage.setItem(DATE_KEY, JSON.stringify(DATES));
     localStorage.setItem(PREF_KEY, JSON.stringify(PREFS));
+    localStorage.setItem(TRIP_KEY, JSON.stringify(TRIPS));
   } catch(e){}
 }
+
+/* ---------- where you are from, and where you live now ----------
+   Two different things. The passport decides the visa line; the
+   country you actually live in decides the money you think in and
+   which flights count as going home. */
+const homeCountry = () =>
+  CO_BY_SLUG[PREFS.homeCountry] || CO_BY_SLUG[PREFS.passport] || null;
+const livingCountry = () =>
+  CO_BY_SLUG[PREFS.livingCountry] || CO_BY_SLUG[(PREFS.home && PREFS.home.co) || ''] || homeCountry();
+const homeMoney = () => {
+  const co = livingCountry();
+  return (co && currencyOf(co.slug)) || ['USD','$'];
+};
+
 const dateOf = id => DATES[id] || '';
 function setDate(id, v){
   if (v) DATES[id] = v; else delete DATES[id];
@@ -247,9 +264,10 @@ async function exportJournal(){
     if (d) photos[id] = d;
   }
   const blob = {
-    meridian: 2,
+    meridian: 3,
     exported: new Date().toISOString(),
-    status: STATUS, added: ADDED, entries: ENTRIES, dates: DATES, prefs: PREFS, photos
+    status: STATUS, added: ADDED, entries: ENTRIES, dates: DATES, prefs: PREFS,
+    trips: TRIPS, photos
   };
   const stamp = new Date().toISOString().slice(0,10);
   offerFile('meridian-journal-' + stamp + '.json', JSON.stringify(blob), 'application/json');
@@ -265,9 +283,12 @@ async function importJournal(file, merge){
     Object.assign(ENTRIES, d.entries || {});
     const have = new Set(ADDED.map(a=>a.id));
     (d.added || []).forEach(a=>{ if (!have.has(a.id)) ADDED.push(a); });
+    const haveT = new Set(TRIPS.map(t=>t.id));
+    (d.trips || []).forEach(t=>{ if (!haveT.has(t.id)) TRIPS.push(t); });
   } else {
     STATUS = d.status || {}; DATES = d.dates || {};
     ENTRIES = d.entries || {}; ADDED = d.added || [];
+    TRIPS = d.trips || [];
   }
   if (d.prefs) PREFS = Object.assign(PREFS, d.prefs);
   let restored = 0;
@@ -500,17 +521,21 @@ const ICON = {
   flag:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 21V4.2M5.5 5.2h12l-2.4 4 2.4 4h-12"/></svg>',
   star:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.6 14.6 9l5.9.8-4.3 4.1 1.1 5.8-5.3-2.9-5.3 2.9 1.1-5.8L3.5 9.8 9.4 9Z"/></svg>'
 };
+/* A continent is not somewhere you go on a date — it is the sum of the
+   countries inside it. Dates belong to the places you actually stood in. */
+const datable = id => !String(id).startsWith('cont:');
 function ctl(id, label, withDate){
   const v = statusOf(id);
   const box = '<span class="statusctl" data-id="'+id+'" role="group" aria-label="'+esc(label||'Status')+'">'
     + '<button type="button" class="been" data-v="been" aria-pressed="'+(v==='been')+'">'+ICON.check+'BEEN</button>'
     + '<button type="button" class="want" data-v="want" aria-pressed="'+(v==='want')+'">'+ICON.flag+'WANT</button></span>';
-  if (!withDate || v !== 'been') return box;
+  if (!withDate || v !== 'been' || !datable(id)) return box;
   return '<span class="ctlwrap">'+box
     + '<label class="whenbox"><span class="hidden">When did you go</span>'
     + '<input type="month" data-when="'+id+'" value="'+esc(dateOf(id))+'" max="2099-12"></label></span>';
 }
-const whenTag = id => dateOf(id) ? '<span class="chip warm">'+esc(prettyDate(dateOf(id)))+'</span>' : '';
+const whenTag = id => (datable(id) && dateOf(id))
+  ? '<span class="chip warm">'+esc(prettyDate(dateOf(id)))+'</span>' : '';
 document.addEventListener('change', e=>{
   const w = e.target.closest('[data-when]');
   if (!w) return;
@@ -583,7 +608,11 @@ document.addEventListener('click', async e=>{
 
 document.addEventListener('change', async e=>{
   const pf = e.target.closest('[data-pref]');
-  if (pf){ PREFS[pf.dataset.pref] = pf.value; savePrefs(); return rerender(); }
+  if (pf){
+    PREFS[pf.dataset.pref] = pf.value; savePrefs();
+    if (pf.dataset.pref === 'livingCountry') loadRates(homeMoney()[0]);
+    return rerender();
+  }
   const im = e.target.closest('[data-import]');
   if (im && im.files && im.files[0]){
     const replace = im.dataset.import === 'replace';
@@ -594,13 +623,15 @@ document.addEventListener('change', async e=>{
   }
 });
 
-/* home airport picker: every capital, plus every US city we know */
+/* home airport picker: every capital, plus every US city we know.
+   It also remembers which country that city is in, which is what
+   "living in" falls back to. */
 function wireHomePort(){
   const box = document.getElementById('homeport');
   if (!box) return;
   const ac = document.getElementById('homeac');
-  const pool = ALL_COUNTRIES.map(c=>[c.capital + ', ' + c.name, c.lat, c.lon])
-    .concat(ALL_CITIES.map(c=>[c.name + ', ' + c.state.abbr, c.lat, c.lon]));
+  const pool = ALL_COUNTRIES.map(c=>[c.capital + ', ' + c.name, c.lat, c.lon, c.slug])
+    .concat(ALL_CITIES.map(c=>[c.name + ', ' + c.state.abbr, c.lat, c.lon, USA.slug]));
   box.addEventListener('input', ()=>{
     const q = box.value.trim().toLowerCase();
     if (q.length < 2){ ac.classList.add('hidden'); return; }
@@ -609,11 +640,145 @@ function wireHomePort(){
     ac.innerHTML = hits.map(r=>'<button type="button">'+esc(r[0])+'</button>').join('');
     ac.classList.remove('hidden');
     [...ac.children].forEach((b,i)=>b.addEventListener('click', ()=>{
-      PREFS.home = {name:hits[i][0], lat:hits[i][1], lon:hits[i][2]};
-      savePrefs(); rerender();
+      PREFS.home = {name:hits[i][0], lat:hits[i][1], lon:hits[i][2], co:hits[i][3]};
+      savePrefs();
+      loadRates(homeMoney()[0]);
+      rerender();
     }));
   });
 }
+
+/* ===========================================================
+   TRIPS, ITINERARIES, BADGES — the controls
+   =========================================================== */
+document.addEventListener('click', async e=>{
+  /* pick a month on any climate strip */
+  const mo = e.target.closest('[data-month]');
+  if (mo){ monthSel = +mo.dataset.month; return rerender(); }
+
+  const mk = e.target.closest('[data-maketrip]');
+  if (mk){
+    const sugs = suggestTrips(datedBeen());
+    const s = sugs[+mk.dataset.maketrip];
+    if (s){ const t = tripCreate(s); location.hash = '#/trips/'+t.id; }
+    return;
+  }
+  const td = e.target.closest('[data-tripdel]');
+  if (td){
+    if (!confirm('Delete this trip? The places and their dates stay — only the grouping goes.')) return;
+    tripDelete(td.dataset.tripdel); location.hash = '#/trips'; return;
+  }
+  const drop = e.target.closest('[data-tripdrop]');
+  if (drop){
+    const [tid, pid] = drop.dataset.tripdrop.split('|');
+    const t = tripOf(tid);
+    if (t){ t.places = t.places.filter(p=>p !== pid); saveTrips(); }
+    return rerender();
+  }
+  const da = e.target.closest('[data-dayadd]');
+  if (da){ const t = tripOf(da.dataset.dayadd); if (t) dayAdd(t); return rerender(); }
+  const dd = e.target.closest('[data-daydel]');
+  if (dd){
+    const [tid, i] = dd.dataset.daydel.split('|');
+    const t = tripOf(tid); if (t) dayDel(t, +i);
+    return rerender();
+  }
+  const sa = e.target.closest('[data-stopadd]');
+  if (sa){
+    const [tid, i] = sa.dataset.stopadd.split('|');
+    const t = tripOf(tid); if (!t) return;
+    const wrap = sa.closest('.addstop');
+    const n = wrap.querySelector('.s-n').value.trim();
+    if (!n) return;
+    stopAdd(t, +i, n, wrap.querySelector('.s-t').value);
+    return rerender();
+  }
+  const sd = e.target.closest('[data-stopdel]');
+  if (sd){
+    const [tid, i, j] = sd.dataset.stopdel.split('|');
+    const t = tripOf(tid); if (t) stopDel(t, +i, +j);
+    return rerender();
+  }
+  const sm = e.target.closest('[data-stopmove]');
+  if (sm){
+    const [tid, i, j, d] = sm.dataset.stopmove.split('|');
+    const t = tripOf(tid); if (t) stopMove(t, +i, +j, +d);
+    return rerender();
+  }
+  const doc = e.target.closest('[data-tripdoc]');
+  if (doc){
+    const t = tripOf(doc.dataset.tripdoc); if (!t) return;
+    offerFile(slug(t.title || 'trip') + '-itinerary.doc',
+      itineraryDoc(t, t.places.map(nameOfId)), 'application/msword');
+    return;
+  }
+
+  /* badges: one, or the whole shelf */
+  const sh = e.target.closest('[data-share]');
+  if (sh){
+    const [, name, sub] = sh.dataset.share.split('|');
+    sh.disabled = true; const was = sh.textContent; sh.textContent = 'WORKING…';
+    try {
+      const svg = badgeSVG(name, sub, 420).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+      const png = await svgToPNG(svg, 420, 420, 2);
+      const how = await shareBlob(png, slug(name)+'-badge.png', name + ' — Meridian');
+      sh.textContent = how === 'saved' ? 'SAVED' : how === 'shared' ? 'SHARED' : was;
+    } catch(err){ sh.textContent = 'COULD NOT SHARE'; }
+    setTimeout(()=>{ sh.disabled = false; sh.textContent = was; }, 2200);
+    return;
+  }
+  const sb = e.target.closest('[data-shareboard]');
+  if (sb){
+    sb.disabled = true; const was = sb.textContent; sb.textContent = 'Drawing…';
+    try {
+      const png = await boardPNG();
+      const how = await shareBlob(png, 'meridian-board.png', 'My travel board — Meridian');
+      sb.textContent = how === 'saved' ? 'Saved' : how === 'shared' ? 'Shared' : was;
+    } catch(err){ sb.textContent = 'Could not share'; }
+    setTimeout(()=>{ sb.disabled = false; sb.textContent = was; }, 2400);
+    return;
+  }
+});
+/* the whole board as one image: badges laid out in a grid with a count */
+async function boardPNG(){
+  const all = badgeItems();
+  const cols = all.length <= 4 ? all.length || 1 : all.length <= 12 ? 4 : all.length <= 24 ? 6 : 8;
+  const rows = Math.ceil(all.length / cols);
+  const cell = 150, padX = 60, top = 150, bottom = 70;
+  const W = cols*cell + padX*2, H = top + rows*cell + bottom;
+  const C = counts();
+  const tiles = all.map((x,i)=>{
+    const cx = padX + (i % cols)*cell, cy = top + Math.floor(i/cols)*cell;
+    const label = (x.name.length > 16 ? x.name.slice(0,15)+'…' : x.name).toUpperCase();
+    return '<g transform="translate('+cx+','+cy+')">'
+      + badgeSVG(x.name, x.sub, 120).replace('<svg ', '<svg x="15" y="6" ')
+      + '<text x="75" y="142" text-anchor="middle" fill="#8a8178" font-family="ui-monospace,monospace" '
+      + 'font-size="9" letter-spacing="1">'+esc(label)+'</text></g>';
+  }).join('');
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'
+    + '<rect width="'+W+'" height="'+H+'" fill="#13110f"/>'
+    + '<text x="'+padX+'" y="72" fill="#f4efe7" font-family="Georgia,serif" font-size="44">The board</text>'
+    + '<text x="'+padX+'" y="104" fill="#c9a227" font-family="ui-monospace,monospace" font-size="13" letter-spacing="3">'
+    + C.countries + ' COUNTRIES · ' + C.states + ' STATES · ' + C.cities + ' CITIES</text>'
+    + '<line x1="'+padX+'" y1="124" x2="'+(W-padX)+'" y2="124" stroke="#3a342c"/>'
+    + tiles
+    + '<text x="'+padX+'" y="'+(H-28)+'" fill="#6f675d" font-family="ui-monospace,monospace" font-size="11" letter-spacing="3">MERIDIAN</text>'
+    + '</svg>';
+  return svgToPNG(svg, W, H, 2);
+}
+document.addEventListener('change', e=>{
+  const tt = e.target.closest('[data-triptitle]');
+  if (tt){ const t = tripOf(tt.dataset.triptitle); if (t){ t.title = tt.value.trim() || t.title; saveTrips(); } return; }
+  const tn = e.target.closest('[data-tripnote]');
+  if (tn){ const t = tripOf(tn.dataset.tripnote); if (t){ t.note = tn.value; saveTrips(); } return; }
+  const dl = e.target.closest('[data-daylabel]');
+  if (dl){
+    const [tid, i] = dl.dataset.daylabel.split('|');
+    const t = tripOf(tid);
+    if (t && t.days[+i]){ t.days[+i].label = dl.value.trim() || ('Day '+(+i+1)); saveTrips(); }
+    return;
+  }
+});
 
 /* ===========================================================
    SHARED MARKUP
@@ -671,7 +836,9 @@ function mapPoints(filter){
   ADDED.forEach(a=>push(a.lat, a.lon, statusOf(a.id), a.n, '#/'+a.cont+'/'+a.c, 2));
   return out;
 }
-function worldMap(points, height, view){
+let MAPN = 0;
+function worldMap(points, height, opts){
+  const o = opts || {};
   const pins = points.map(p=>{
     const cls = p.s === 'been' ? 'p-been' : p.s === 'want' ? 'p-want' : 'p-none';
     const halo = p.s === 'none' ? '' :
@@ -679,16 +846,32 @@ function worldMap(points, height, view){
     return halo + '<circle class="'+cls+'" cx="'+p.x.toFixed(2)+'" cy="'+p.y.toFixed(2)+'" r="1.1" data-r="1.1"'
       + ' data-href="'+p.h+'"><title>'+esc(p.n)+'</title></circle>'
       + '<text data-px="'+p.x.toFixed(2)+'" data-py="'+p.y.toFixed(2)+'" data-len="'+p.n.length
-      + '" data-tier="'+p.t+'" data-pri="'+(p.s==='been'?0:p.s==='want'?1:2)+'">'+esc(p.n)+'</text>';
+      + '" data-tier="'+p.t+'" data-pri="'+(p.s==='been'?0:p.s==='want'?1:2)+'"'
+      + ' data-href="'+p.h+'">'+esc(p.n)+'</text>';
   }).join('');
-  const v = view || {x:0,y:0,w:360,h:180};
+  /* The night side, worked out from where the sun actually is at this
+     moment. It is recomputed on every render, so a reload is always
+     showing the real terminator rather than a picture of one. */
+  const id = 'night'+(++MAPN), night = terminatorPath(new Date());
+  const land = landPaths();
+  const filter = o.filter
+    ? '<span class="mapfilter onmap">'
+      + ['all','been','want'].map(v=>'<button type="button" data-filter="'+v+'" aria-pressed="'
+        + (mapFilter===v)+'">'+(v==='all'?'ALL':v==='been'?'BEEN':'WANT')+'</button>').join('')
+      + '</span>' : '';
   return '<div class="worldmap" style="height:'+height+'px" data-map="1">'
-    + '<svg viewBox="'+v.x+' '+v.y+' '+v.w+' '+v.h+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="World map of your places">'
-    + '<g class="land">'+landPaths()+'</g><g class="pins">'+pins+'</g></svg>'
-    + '<span class="maphint">SCROLL TO ZOOM · DRAG TO PAN</span>'
+    + '<svg viewBox="0 0 360 180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="World map of your places, with the night side shaded">'
+    + '<defs><clipPath id="'+id+'"><path d="'+night+'"/></clipPath></defs>'
+    + '<g class="land">'+land+'</g>'
+    + '<path class="nightwash" d="'+night+'"/>'
+    + '<g class="land dark" clip-path="url(#'+id+')">'+land+'</g>'
+    + '<g class="pins">'+pins+'</g></svg>'
+    + '<span class="maphint">SCROLL TO ZOOM · DRAG TO PAN · CLICK A PLACE TO OPEN IT</span>'
+    + filter
     + '<span class="mapctl"><button type="button" data-zoom="in" aria-label="Zoom in">+</button>'
     + '<button type="button" data-zoom="out" aria-label="Zoom out">−</button>'
-    + '<button type="button" data-zoom="reset" aria-label="Reset the map">⤢</button></span></div>';
+    + '<button type="button" data-zoom="reset" aria-label="Reset the map">⤢</button></span>'
+    + '<span class="maplegend"><i class="sun"></i>DAYLIGHT<i class="moon"></i>NIGHT</span></div>';
 }
 function wireMaps(){
   document.querySelectorAll('.worldmap').forEach(el=>{
@@ -770,8 +953,9 @@ function wireMaps(){
       try { svg.releasePointerCapture(e.pointerId); } catch(err){} } };
     svg.addEventListener('pointerup', stop);
     svg.addEventListener('pointercancel', stop);
+    /* both the dot and its name open the place */
     svg.addEventListener('click', e=>{
-      const c = e.target.closest('circle[data-href]');
+      const c = e.target.closest('[data-href]');
       if (c && moved < 6) location.hash = c.dataset.href;
     });
     el.querySelectorAll('[data-zoom]').forEach(b=>b.addEventListener('click', ()=>{
@@ -1045,7 +1229,7 @@ function viewHome(){
     + '<span class="chip warm"><span class="pin" style="width:8px;height:8px;box-shadow:none"></span>BEEN</span>'
     + '<span class="chip on"><span class="pin want" style="width:8px;height:8px;box-shadow:none"></span>WANT TO GO</span></span>'
     + '<a class="btn ghost" href="#/map">Open the full map</a></div>'
-    + worldMap(mapPoints('all'), 460)+'</div></div>'
+    + worldMap(mapPoints(mapFilter), 460, {filter:true})+'</div></div>'
 
     + '<div class="sec">'+secHead(recent ? 'Where you were last' : 'Most recently added', C.cities+' CITIES LOGGED')
     + '<div class="grid g-wide" style="padding-top:28px">'+feat+'</div></div>'
@@ -1084,7 +1268,7 @@ function viewList(kind){
   const order = ['Continent','Country','State','City','Region','Park or region','Thing to do','Restaurant'];
   const groups = order.map(k=>[k, items.filter(i=>i.kind === k)]).filter(g=>g[1].length);
   const body = groups.length ? groups.map(([k, list])=>
-      '<div class="sec">'+secHead(k === 'Park or region' ? 'Parks and regions' : k+'s', pad2(list.length))
+      '<div class="sec">'+secHead(plural(k), pad2(list.length))
       + list.slice().sort((a,b)=>(dateOf(b.id)||'').localeCompare(dateOf(a.id)||''))
         .map(i=>'<div class="added"><span class="added-n">'+pinFor(kind)
         + '<a href="'+i.href+'" style="color:var(--ink)">'+esc(i.name)+'</a>'
@@ -1104,11 +1288,14 @@ function viewContinent(ct){
   const n = ct.countries.filter(c=>countryStatus(c)==='been').length;
   const cards = ct.countries.map(co=>{
     const s = countryStatus(co), night = isNightAt(co.lat, co.lon);
-    return '<div class="card'+(s==='none'?' empty':'')+(s==='want'?' wish':'')+(night?' night':'')+'" style="min-height:160px">'
+    const sea = seasonNow('country:'+co.slug);
+    return '<div class="card'+(s==='none'?' empty':'')+(s==='want'?' wish':'')+(night?' night':'')
+      + (sea?' s-'+sea.k:'')+'" style="min-height:160px">'
       + '<a class="go" href="'+countryHref(co)+'" style="display:flex;flex-direction:column;gap:7px">'
       + '<span class="card-t" style="font-size:26px">'+esc(co.name)+'</span>'
       + '<span class="lab-s"'+(s==='none'?' style="color:var(--ghost)"':'')+'>'
-      + '<span data-tz="'+co.tz+'">'+fmtTime(new Date(),co.tz)+'</span> · '+esc(co.capital).toUpperCase()+'</span></a>'
+      + '<span data-tz="'+co.tz+'">'+fmtTime(new Date(),co.tz)+'</span> · '
+      + (sea ? esc(sea.label) : esc(co.capital).toUpperCase())+'</span></a>'
       + '<span class="card-foot"><span style="display:flex;align-items:center;gap:10px">'+pinFor(s)
       + '<span class="chip warm" data-wx="co-'+co.slug+'" data-night="'+(night?1:0)+'">'+glyph(night?'night':'clear',14)+'<span>—</span></span></span>'
       + ctl(co.id, co.name)+'</span></div>';
@@ -1130,13 +1317,15 @@ function viewCountry(co){
   const ro = readout('co-'+co.slug, co.lat, co.lon, co.tz);
   routeIsNight = ro.night;
   const head = crumbs([['World','#/continents'],[co.continent.name, contHref(co.continent)],[co.name,'']]);
-  const hero = '<div class="wrap"><div style="padding-top:36px"><div class="hero"><div class="hero-main">'
+  const sea = seasonNow('country:'+co.slug);
+  const hero = '<div class="wrap"><div style="padding-top:36px"><div class="hero'+(sea?' s-'+sea.k:'')+'"><div class="hero-main">'
     + '<h1 class="title-xl">'+esc(co.name)+'</h1>'
     + '<span class="lab">'+esc(co.continent.name).toUpperCase()+' · CAPITAL '+esc(co.capital).toUpperCase()+' · '+coord(co.lat,co.lon)+'</span>'
     + (profileOf(co.slug).b ? '<p class="lede">'+esc(profileOf(co.slug).b)+'</p>' : '')
     + ro.html
     + '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">'+ctl(co.id, co.name, true)
-    + '<span class="chip warm">'+glyph(ro.night?'night':'clear',14)+(ro.night?'IT IS NIGHT IN ':'IT IS DAYTIME IN ')+esc(co.capital).toUpperCase()+'</span></div>'
+    + '<span class="chip warm">'+glyph(ro.night?'night':'clear',14)+(ro.night?'IT IS NIGHT IN ':'IT IS DAYTIME IN ')+esc(co.capital).toUpperCase()+'</span>'
+    + (sea ? '<span class="chip season s-'+sea.k+'">'+sea.label+'</span>' : '')+'</div>'
     + '<p class="note">The clock and the sky above are '+esc(co.capital)+'\u2019s own, and this page follows them into dark mode after sunset there.</p>'
     + '</div><div class="hero-side"><div class="board"><div class="board-h"><span class="lab">YOUR PLACES HERE</span>'
     + '<span class="lab-s">'+pad2(addedFor(co.slug).length)+'</span></div>'
@@ -1187,8 +1376,14 @@ function viewCountry(co){
       + ctl(a.id, a.n)+'<button class="rm" data-rm="'+a.id+'">REMOVE</button></div>').join('')
     : blank('Nothing added yet','Type a place below, or take one of the suggested regions. Each gets its own page with a clock, a description, things to do and where you ate.');
 
+  const ckey = 'country:'+co.slug, season = seasonNow(ckey);
   return head + hero + '<div class="wrap">'
-    + '<div class="sec">'+secHead('Getting there', 'FLIGHT · VISA · SEASON')+intelPanel(co)+'</div>'
+    + '<div class="sec">'+secHead('Getting there', 'FLIGHT · VISA · MONEY')+intelPanel(co)
+    + moneyPanel(co)+'</div>'
+    + '<div class="sec">'+secHead('The year in '+esc(co.name),
+        season ? 'RIGHT NOW: '+season.label : 'MONTH BY MONTH')
+    + climatePanel(ckey, co.name)+'</div>'
+    + phrasePanel(co)
     + '<div class="sec">'+secHead('Well known for', pad2((pr.p||[]).length)+' PLACES')
     + (spots || blank('Nothing written yet','An admin can add the highlights for this country.'))
     + adminNote(co) + '</div>'
@@ -1232,6 +1427,90 @@ function pairPanel(co){
     + list.map(c=>placeCard({name:c.name, id:c.id, href:countryHref(c), status:countryStatus(c), small:true, min:150,
         sub: Math.round(greatCircle(co, c)*0.621371).toLocaleString() + ' MI FROM ' + esc(co.name).toUpperCase()})).join('')
     + '</div></div>';
+}
+/* ---------- the year, month by month ----------
+   A measured row shows real degrees. An estimated row shows the band
+   it falls in and says so, because a modelled number pretending to be
+   a measurement is worse than no number at all. */
+let monthSel = new Date().getMonth();
+function climatePanel(key, name){
+  const row = climateOf(key);
+  if (!row) return '';
+  const measured = row[1] === 'm';
+  const best = new Set(bestMonths(row));
+  const now = new Date().getMonth();
+  const cells = MONTH.map((mn, m)=>{
+    const ch = monthChar(row, m);
+    return '<button type="button" class="cm b-'+ch.band.k+(m===monthSel?' on':'')+(best.has(m)?' best':'')+'"'
+      + ' data-month="'+m+'" aria-pressed="'+(m===monthSel)+'"'
+      + ' title="'+esc(name+' in '+mn+': '+ch.say)+'">'
+      + '<span class="cm-m">'+MON3[m]+(m===now?'<i class="nowdot"></i>':'')+'</span>'
+      + '<span class="cm-i">'+glyph(ch.icon, 17)+'</span>'
+      + '<span class="cm-t">'+(measured ? C2F(ch.hi)+'°' : ch.band.label.slice(0,4))+'</span>'
+      + '</button>';
+  }).join('');
+  const ch = monthChar(row, monthSel);
+  const detail = '<div class="clim-d">'
+    + '<span class="ro"><span class="lab">'+MONTH[monthSel].toUpperCase()+' IN '+esc(name).toUpperCase()+'</span>'
+    + '<span class="intel-v">'+ch.say+'</span></span>'
+    + '<span class="ro"><span class="lab">TYPICAL DAY</span><span class="cd-v">'
+    + (measured ? C2F(ch.hi)+'° / '+C2F(ch.lo)+'°F' : ch.band.label)+'</span></span>'
+    + '<span class="ro"><span class="lab">RAIN</span><span class="cd-v">'
+    + (measured ? ch.rain+' mm' : ch.wetLabel)+'</span></span>'
+    + (ch.snow ? '<span class="ro"><span class="lab">SNOW</span><span class="cd-v">'
+        + (measured ? ch.snow+' days' : (ch.snowy===2?'LIKELY':'POSSIBLE'))+'</span></span>' : '')
+    + '</div>';
+  const bm = [...best].map(m=>MON3[m]).join(' · ');
+  const srcLine = measured
+    ? 'Real monthly averages recorded at ' + esc(row[2]) + '. Köppen class ' + esc(row[0]) + '.'
+    : 'No weather station here, so this is the typical pattern for Köppen class <strong>' + esc(row[0])
+      + '</strong> at this latitude, elevation and distance from the sea — bands, not measurements. '
+      + 'Treat it as what the month is usually like, never as a forecast.';
+  return '<div class="clim">'
+    + '<div class="clim-grid">'+cells+'</div>'
+    + detail
+    + '<p class="note" style="padding-top:16px">'
+    + (bm ? '<strong>Easiest months to be here: '+bm+'.</strong> ' : '')
+    + srcLine + '</p></div>';
+}
+/* money, converted into whatever you actually spend at home */
+function moneyPanel(co){
+  const cur = currencyOf(co.slug), home = homeMoney();
+  if (!cur || !cur[0]) return '';
+  const same = cur[0] === home[0];
+  return '<div class="intel" data-money="1">'
+    + '<div class="intel-c"><span class="lab">THEY USE</span>'
+    + '<span class="intel-v">'+esc(cur[1] || cur[0])+' '+esc(cur[0])+'</span>'
+    + '<span class="note">'+esc(co.name)+'’s currency.</span></div>'
+    + '<div class="intel-c"><span class="lab">ONE '+esc(cur[0])+' IS</span>'
+    + '<span class="intel-v fx" data-fx="'+esc(cur[0])+'">'+(same ? 'your own money' : '—')+'</span>'
+    + '<span class="note fxnote">'+(same
+        ? 'The same money you live on, so nothing to convert.'
+        : 'In '+esc(home[0])+', the currency where you live. Fetched live when the page loaded.')
+    + '</span></div></div>';
+}
+function paintMoney(){
+  const home = homeMoney();
+  document.querySelectorAll('[data-fx]').forEach(el=>{
+    const code = el.dataset.fx;
+    if (code === home[0]) return;
+    const r = rateFor(code);
+    el.textContent = r == null ? (FX.note ? 'unavailable' : '—')
+      : (home[1] || '') + fmtMoney(r) + ' ' + home[0];
+  });
+  if (FX.note) document.querySelectorAll('.fxnote').forEach(el=>{ el.textContent = FX.note; });
+}
+/* a handful of words that change how a place treats you */
+function phrasePanel(co){
+  const p = phrasesFor(co.slug);
+  if (!p) return '';
+  return '<div class="sec">'+secHead('A few words of '+esc(p.name), 'BEFORE YOU GO')
+    + '<div class="phrases">'
+    + p.rows.map(r=>'<div class="ph"><span class="ph-e">'+esc(r[0])+'</span>'
+        + '<span class="ph-l" lang="'+esc(p.key)+'">'+esc(r[1])+'</span>'
+        + (r[2] ? '<span class="ph-s">'+esc(r[2])+'</span>' : '')+'</div>').join('')
+    + '</div><p class="note" style="padding-top:14px">The polite form in each case — the one that is never wrong with a stranger. '
+    + 'The third line is how to say it, not a spelling.</p></div>';
 }
 /* admins can rewrite any of the guide text; everyone else just reads it */
 function adminNote(co){
@@ -1289,6 +1568,9 @@ function viewState(st){
   + '<span class="ro"><span class="ro-v">'+nb+'</span><span class="lab">CITIES LOGGED</span></span>'
   + '<span class="ro"><span class="ro-v">'+st.statewide.filter(p=>been(p.id)).length+'</span><span class="lab">ACROSS THE STATE</span></span>'
   + '<span class="ro"><span class="ro-v">'+(st.cities.length-nb)+'</span><span class="lab">PAGES WAITING</span></span></div></div>'
+  + '<div class="sec">'+secHead('The year in '+esc(st.name),
+      (seasonNow('state:'+st.abbr) || {label:'MONTH BY MONTH'}).label)
+  + climatePanel('state:'+st.abbr, st.name)+'</div>'
   + '<div class="sec">'+secHead('Across the state','PARKS, FALLS, LAKES AND REGIONS')+wide+'</div>'
   + '<div class="sec">'+secHead('Cities', nb+' OF '+st.cities.length+' LOGGED')
   + '<div class="grid g-cities" style="padding-top:28px">'+st.cities.slice().sort((a,b)=>rank(a)-rank(b)).map(cityCard).join('')+'</div></div>'
@@ -1326,12 +1608,188 @@ function viewCity(c){
   + '<button class="btn" data-dl="city:'+c.key+'">'+ICON.down+c.slug+'-places.csv</button></div></div></div></div></div>'
   + entrySection(c.key, 'todo', 'Things to do', 'Add the first one — give it a description and as many photos as you like.')
   + entrySection(c.key, 'eat', 'Where I ate', 'Nothing eaten here on the record yet.')
+  + '<div class="sec">'+secHead('The year in '+esc(c.name),
+      (seasonNow('city:'+c.key) || {label:'MONTH BY MONTH'}).label)
+  + climatePanel('city:'+c.key, c.name)+'</div>'
   + (places ? '<div class="sec">'+secHead('On the map','OPENS IN GOOGLE MAPS')+'<div class="panel" style="margin-top:28px">'+places+'</div></div>' : '')
   + '<div class="pagenav">'
   + '<a href="'+cityHref(prev)+'"><span class="lab-s">← PREVIOUS</span><span class="nt">'+esc(prev.name)+'</span></a>'
   + '<a class="lab" href="'+stateHref(c.state)+'" style="padding:8px 0">ALL OF '+esc(c.state.name).toUpperCase()+'</a>'
   + '<a class="nx" href="'+cityHref(next)+'"><span class="lab-s">NEXT →</span><span class="nt">'+esc(next.name)+'</span></a>'
   + '</div></div>';
+}
+
+/* ===========================================================
+   TRIPS — a journey, not a list
+   =========================================================== */
+/* everything you have been to that carries a date, in one shape */
+function datedBeen(){
+  return everything()
+    .filter(x=>statusOf(x.id) === 'been' && datable(x.id) && dateOf(x.id))
+    .map(x=>({id:x.id, name:x.name, sub:x.sub || x.kind, kind:x.kind, href:x.href,
+              date:dateOf(x.id), lat:x.lat, lon:x.lon}));
+}
+const nameOfId = id => {
+  const hit = everything().find(x=>x.id === id);
+  return hit ? hit.name : id;
+};
+const itemOfId = id => everything().find(x=>x.id === id) || null;
+
+function viewTrips(){
+  routeIsNight = isNightAt(38,-97);
+  const items = datedBeen();
+  const sugs = suggestTrips(items);
+  const loose = (()=>{
+    const inTrip = new Set(TRIPS.flatMap(t=>t.places));
+    const inSug = new Set(sugs.flatMap(s=>s.places));
+    return items.filter(x=>!inTrip.has(x.id) && !inSug.has(x.id));
+  })();
+
+  const mine = TRIPS.length ? TRIPS.slice()
+    .sort((a,b)=>(b.from||'').localeCompare(a.from||''))
+    .map(t=>{
+      const names = t.places.map(nameOfId);
+      const stops = t.days.reduce((n,d)=>n+d.stops.length, 0);
+      return '<a class="card trip" href="#/trips/'+t.id+'">'
+        + '<span class="lab-s">'+esc(tripSpan(t)).toUpperCase()+'</span>'
+        + '<span class="card-t" style="font-size:26px">'+esc(t.title)+'</span>'
+        + '<span class="note">'+esc(names.slice(0,4).join(' · '))
+        + (names.length > 4 ? ' · +'+(names.length-4)+' more' : '')+'</span>'
+        + '<span class="trip-foot"><span class="chip">'+pad2(t.places.length)+' PLACES</span>'
+        + (t.days.length ? '<span class="chip warm">'+pad2(t.days.length)+' DAYS · '+pad2(stops)+' STOPS</span>'
+                         : '<span class="chip">NO ITINERARY YET</span>')+'</span></a>';
+    }).join('')
+    : '';
+
+  const suggested = sugs.length ? sugs.map((s,i)=>
+      '<div class="added sug-trip"><span class="added-n">'
+      + '<span class="card-t" style="font-size:19px">'+esc(s.title)+'</span>'
+      + '<span class="lab-s">'+esc(s.names.join(' · ')).toUpperCase()+'</span></span>'
+      + '<button class="btn" data-maketrip="'+i+'">Make this a trip</button></div>').join('')
+    : '';
+
+  return crumbs([['World','#/continents'],['Trips','']])
+  + '<div class="wrap"><div style="padding-top:36px"><h1 class="title-l">Trips</h1>'
+  + '<p class="lede" style="padding-top:14px">Places you marked as been, with a date, gathered into the journeys they '
+  + 'actually belonged to — so the record reads as five trips rather than forty separate entries.</p></div>'
+
+  + (mine ? '<div class="sec">'+secHead('Your trips', pad2(TRIPS.length))
+      + '<div class="grid g-wide" style="padding-top:28px">'+mine+'</div></div>' : '')
+
+  + (suggested ? '<div class="sec">'+secHead('Suggested from your dates', pad2(sugs.length))
+      + '<p class="note" style="padding-bottom:18px">Visits whose months run into each other are almost always one journey. '
+      + 'Confirm a grouping and it becomes a trip you can name, write up and plan day by day.</p>'
+      + suggested + '</div>' : '')
+
+  + (!mine && !suggested
+      ? blank('No trips yet', 'Mark a few places as <strong>been</strong> and give them the month you went. '
+        + 'Two or more in neighbouring months get offered here as a trip.')
+      : '')
+
+  + (loose.length ? '<div class="sec">'+secHead('Single visits', pad2(loose.length))
+      + loose.sort((a,b)=>b.date.localeCompare(a.date)).map(x=>
+        '<div class="added"><span class="added-n">'+pinFor('been')
+        + '<a href="'+x.href+'" style="color:var(--ink)">'+esc(x.name)+'</a>'
+        + '<span class="lab-s">'+esc(x.sub).toUpperCase()+'</span></span>'
+        + '<span class="chip warm">'+esc(prettyDate(x.date))+'</span></div>').join('')
+      + '<p class="note" style="padding-top:14px">On their own for now. Date another place in the same month and the pair becomes a trip.</p></div>' : '')
+  + '</div>';
+}
+
+function viewTrip(t){
+  routeIsNight = isNightAt(38,-97);
+  const items = t.places.map(itemOfId).filter(Boolean);
+  const names = items.map(x=>x.name);
+  const placeRows = items.length ? items.map(x=>
+      '<div class="added"><span class="added-n">'+pinFor('been')
+      + '<a href="'+x.href+'" style="color:var(--ink)">'+esc(x.name)+'</a>'
+      + '<span class="lab-s">'+esc(x.sub || x.kind).toUpperCase()
+      + (dateOf(x.id) ? ' · '+esc(prettyDate(dateOf(x.id))).toUpperCase() : '')+'</span></span>'
+      + '<button class="rm" data-tripdrop="'+t.id+'|'+x.id+'">REMOVE</button></div>').join('')
+    : blank('Nothing in this trip','Add a place by marking it been with a date in the same month.');
+
+  const days = t.days.length ? t.days.map((d,i)=>
+      '<div class="day"><div class="day-h">'
+      + '<input class="day-l" type="text" value="'+esc(d.label)+'" data-daylabel="'+t.id+'|'+i+'" aria-label="Name of this day">'
+      + '<button class="rm" data-daydel="'+t.id+'|'+i+'">DELETE DAY</button></div>'
+      + (d.stops.length ? '<div class="stops">'+d.stops.map((s,j)=>
+          '<div class="stop"><span class="stop-t">'+(s.t ? esc(s.t) : '<i>—</i>')+'</span>'
+          + '<span class="stop-n">'+esc(s.n)+'</span>'
+          + '<span class="stop-b"><button class="tbtn" data-stopmove="'+t.id+'|'+i+'|'+j+'|-1" aria-label="Move up">↑</button>'
+          + '<button class="tbtn" data-stopmove="'+t.id+'|'+i+'|'+j+'|1" aria-label="Move down">↓</button>'
+          + '<button class="rm" data-stopdel="'+t.id+'|'+i+'|'+j+'">REMOVE</button></span></div>').join('')+'</div>' : '')
+      + '<div class="addstop"><input type="text" class="s-n" placeholder="Where did you go?" aria-label="Place">'
+      + '<input type="time" class="s-t" aria-label="Time of day, optional">'
+      + '<button class="btn ghost" data-stopadd="'+t.id+'|'+i+'">Add stop</button></div>'
+      + '<p class="note">The time is optional — leave it blank for a day you just wandered.</p></div>').join('')
+    : blank('No days yet','Add a day and start filling in where you went. The time of day is optional.');
+
+  const earned = items.filter(x=>x.kind === 'Country' || x.kind === 'State' || x.kind === 'City');
+  return crumbs([['World','#/continents'],['Trips','#/trips'],[t.title,'']])
+  + '<div class="wrap"><div style="padding-top:36px"><div class="hero"><div class="hero-main">'
+  + '<span class="lab" style="color:var(--warm)">'+esc(tripSpan(t)).toUpperCase()+'</span>'
+  + '<input class="trip-title" type="text" value="'+esc(t.title)+'" data-triptitle="'+t.id+'" aria-label="Trip name">'
+  + '<p class="note">'+esc(names.join(' · '))+'</p>'
+  + '<textarea class="trip-note" rows="3" placeholder="What was this trip? Write it however you like." '
+  + 'data-tripnote="'+t.id+'">'+esc(t.note||'')+'</textarea>'
+  + '</div><div class="hero-side"><div class="board"><div class="board-h"><span class="lab">THIS TRIP</span>'
+  + '<span class="lab-s">'+pad2(t.places.length)+'</span></div>'
+  + '<div style="padding:18px;display:flex;flex-direction:column;gap:10px">'
+  + '<p class="note">The itinerary below as a document — it opens in Word, Pages or Docs, and prints to PDF.</p>'
+  + '<button class="btn" data-tripdoc="'+t.id+'">'+ICON.down+'Export itinerary</button>'
+  + '<button class="btn ghost" data-tripdel="'+t.id+'">Delete this trip</button>'
+  + '</div></div></div></div></div>'
+
+  + '<div class="sec">'+secHead('Places on this trip', pad2(items.length))+placeRows+'</div>'
+  + '<div class="sec">'+secHead('Day by day', pad2(t.days.length)+' DAYS')
+  + '<div style="padding-top:24px">'+days+'</div>'
+  + '<div style="padding-top:20px"><button class="btn" data-dayadd="'+t.id+'">+ Add a day</button></div></div>'
+
+  + (earned.length ? '<div class="sec">'+secHead('Earned on this trip', pad2(earned.length))
+      + '<div class="badges" style="padding-top:26px">'
+      + earned.map(x=>badgeCard(x.id, x.name, x.sub || x.kind)).join('')+'</div></div>' : '')
+  + '</div>';
+}
+
+/* ===========================================================
+   THE BOARD — what you brought back
+   =========================================================== */
+const plural = k => k === 'Country' ? 'Countries' : k === 'City' ? 'Cities'
+  : k === 'Park or region' ? 'Parks and regions' : k + 's';
+function badgeItems(){
+  return everything()
+    .filter(x=>['Continent','Country','State','City','Region','Park or region'].indexOf(x.kind) >= 0)
+    .filter(x=>statusOf(x.id) === 'been')
+    .map(x=>({id:x.id, name:x.name, sub:x.sub || x.kind, kind:x.kind, href:x.href}));
+}
+function badgeCard(id, name, sub){
+  return '<div class="badge" data-badge="'+esc(id)+'">'
+    + badgeSVG(name, sub, 132)
+    + '<span class="badge-n">'+esc(name)+'</span>'
+    + '<span class="lab-s">'+esc(sub).toUpperCase()+'</span>'
+    + '<button class="tbtn" data-share="'+esc(id)+'|'+esc(name)+'|'+esc(sub)+'">SHARE</button></div>';
+}
+function viewBoard(){
+  routeIsNight = isNightAt(38,-97);
+  const all = badgeItems();
+  const order = ['Continent','Country','State','City','Region','Park or region'];
+  const groups = order.map(k=>[k, all.filter(x=>x.kind === k)]).filter(g=>g[1].length);
+  const body = all.length
+    ? groups.map(([k, list])=>'<div class="sec">'
+        + secHead(plural(k), pad2(list.length))
+        + '<div class="badges" style="padding-top:26px">'
+        + list.map(x=>badgeCard(x.id, x.name, x.sub)).join('')+'</div></div>').join('')
+    : blank('Nothing on the board yet',
+        'Mark somewhere as <strong>been</strong> and its badge appears here. Each one is drawn from the '
+        + 'place’s own name, so no two are alike.');
+  return crumbs([['World','#/continents'],['Board','']])
+  + '<div class="wrap"><div style="padding-top:36px;display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end;justify-content:space-between">'
+  + '<div><h1 class="title-l">The board</h1>'
+  + '<p class="lede" style="padding-top:14px">One badge for every place you have been. The shape, the rim and the '
+  + 'colours come from the place’s own name, so each badge belongs to that place and nowhere else — '
+  + 'a shelf of them instead of a drawer of magnets.</p></div>'
+  + (all.length ? '<button class="btn" data-shareboard="1">Share the whole board</button>' : '')+'</div>'
+  + body + '</div>';
 }
 
 /* ---------- account: who you are, and where the journal lives ---------- */
@@ -1367,6 +1825,10 @@ function viewAccount(){
   }
 
   const passportOpts = PASSPORTS.map(pp=>'<option value="'+pp[0]+'"'+(PREFS.passport===pp[0]?' selected':'')+'>'+esc(pp[1])+'</option>').join('');
+  const hc = homeCountry(), lc = livingCountry(), money = homeMoney();
+  const countryOpts = sel => '<option value="">— follow my other settings —</option>'
+    + ALL_COUNTRIES.slice().sort((a,b)=>a.name.localeCompare(b.name))
+      .map(c=>'<option value="'+c.slug+'"'+(sel===c.slug?' selected':'')+'>'+esc(c.name)+'</option>').join('');
   return crumbs([['World','#/continents'],['Account','']])
   + '<div class="wrap"><div style="padding-top:36px"><h1 class="title-l">Account</h1>'
   + '<p class="lede" style="padding-top:14px">Where your journal is kept, and the two settings that drive flight times and visa rules.</p></div>'
@@ -1381,7 +1843,18 @@ function viewAccount(){
   + '<input type="text" id="homeport" value="'+esc(PREFS.home.name)+'" placeholder="Your home city">'
   + '<span class="note">Type a city and pick a match; flight times are measured from here.</span>'
   + '<span class="ac hidden" id="homeac"></span></label>'
-  + '</div></div>'
+  + '<label class="setbox"><span class="lab">HOME COUNTRY</span>'
+  + '<select data-pref="homeCountry">'+countryOpts(PREFS.homeCountry)+'</select>'
+  + '<span class="note">Where you are from. Left alone it follows your passport'
+  + (hc ? ' — currently <strong>'+esc(hc.name)+'</strong>' : '')+'.</span></label>'
+  + '<label class="setbox"><span class="lab">LIVING IN</span>'
+  + '<select data-pref="livingCountry">'+countryOpts(PREFS.livingCountry)+'</select>'
+  + '<span class="note">Where you are based now. Left alone it follows the city you fly from'
+  + (lc ? ' — currently <strong>'+esc(lc.name)+'</strong>, so prices convert into '+esc(money[0]) : '')
+  + '.</span></label>'
+  + '</div>'
+  + '<p class="note" style="padding-top:16px">These are deliberately separate. The passport decides whether you need a '
+  + 'visa; the country you live in decides the money you think in. Plenty of people do not have the same answer for both.</p></div>'
 
   + '<div class="sec">'+secHead('Backup','KEEP A COPY')
   + '<div class="setgrid" style="padding-top:24px">'
@@ -1420,6 +1893,15 @@ function route(){
   else if (first === 'continents'){ html = viewHome(); points = boardPoints(); scrollTo = 'continents'; }
   else if (first === 'map'){ html = viewMap(); title = 'The map — Meridian'; }
   else if (first === 'been' || first === 'want'){ html = viewList(first); title = (first==='been'?'Been there':'Want to go')+' — Meridian'; }
+  else if (first === 'board'){ html = viewBoard(); title = 'The board — Meridian'; }
+  else if (first === 'trips'){
+    if (parts.length === 1){ html = viewTrips(); title = 'Trips — Meridian'; }
+    else {
+      const t = tripOf(parts[1]);
+      if (!t) html = viewMissing();
+      else { html = viewTrip(t); title = t.title + ' — Meridian'; foot = tripSpan(t).toUpperCase(); }
+    }
+  }
   else if (first === 'account'){ html = viewAccount(); title = 'Account — Meridian'; }
   else {
     const ct = CONT_BY_SLUG[first];
@@ -1458,6 +1940,7 @@ function route(){
   document.querySelectorAll('.navlinks a[data-nav]').forEach(a=>
     a.classList.toggle('on', a.dataset.nav === (first || 'home')));
   applyTheme(); tick(); wireMaps(); paintPhotos(); wireAddBox(); wireHomePort(); paintAuthState();
+  paintMoney();
   loadWeather(points);
   lastRoute = raw;
 }
@@ -1561,3 +2044,5 @@ box.addEventListener('keydown', e=>{ if (e.key === 'Escape'){ res.classList.add(
 
 route();
 if (scrollTo){ const el = document.getElementById(scrollTo); if (el) el.scrollIntoView({block:'start'}); }
+/* one keyless call for today's exchange rates, in the money you live on */
+loadRates(homeMoney()[0]);

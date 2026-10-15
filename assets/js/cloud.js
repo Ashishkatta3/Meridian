@@ -93,7 +93,8 @@ async function cloudReset(email){
 
 /* ---------- the journal, as one document ---------- */
 function journal(){
-  return { v: 2, status: STATUS, added: ADDED, entries: ENTRIES, dates: DATES, prefs: PREFS };
+  return { v: 3, status: STATUS, added: ADDED, entries: ENTRIES, dates: DATES,
+           prefs: PREFS, trips: TRIPS };
 }
 function loadJournal(d){
   if (!d) return;
@@ -101,6 +102,7 @@ function loadJournal(d){
   if (d.added)   ADDED   = d.added;
   if (d.entries) ENTRIES = d.entries;
   if (d.dates)   DATES   = d.dates;
+  if (d.trips)   TRIPS   = d.trips;
   if (d.prefs)   PREFS   = Object.assign(PREFS, d.prefs);
   persistAllLocal();
 }
