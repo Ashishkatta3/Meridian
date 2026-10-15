@@ -333,3 +333,110 @@ html[data-theme="dark"] .board-r.night,html[data-theme="dark"] .card.night{backg
   background:var(--ground);border:1px solid var(--rule);border-radius:2px;padding:12px 14px;width:100%}
 .editor .f-g2{font-family:var(--mono);font-size:13px}
 code{font-family:var(--mono);font-size:.92em;background:var(--rule-soft);padding:1px 5px;border-radius:2px}
+
+/* ---- day and night on the map ---- */
+.worldmap .nightwash{fill:#16202B;opacity:.20;pointer-events:none}
+html[data-theme="dark"] .worldmap .nightwash{fill:#000;opacity:.34}
+.worldmap .land.dark path{fill:#4A5663;stroke:#59646F}
+html[data-theme="dark"] .worldmap .land.dark path{fill:#0D131A;stroke:#1A222B}
+.worldmap .pins text{cursor:pointer}
+.maplegend{position:absolute;left:14px;bottom:12px;display:flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;color:var(--faint);
+  background:color-mix(in srgb,var(--ground) 82%,transparent);border:1px solid var(--rule);
+  border-radius:999px;padding:5px 11px;pointer-events:none}
+.maplegend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.maplegend i.sun{background:var(--rule-soft);border:1px solid var(--rule);margin-left:2px}
+.maplegend i.moon{background:#2B3038;margin-left:10px}
+html[data-theme="dark"] .maplegend i.moon{background:#0D131A;border:1px solid #1A222B}
+.mapfilter.onmap{position:absolute;right:14px;top:14px;background:color-mix(in srgb,var(--ground) 88%,transparent);
+  backdrop-filter:blur(3px)}
+
+/* ---- the year, month by month ---- */
+:root{
+  --b-freezing:#BBD3E6; --b-cold:#CFE0EA; --b-cool:#D8E4DA; --b-mild:#DDE6CC;
+  --b-warm:#F0DFB4; --b-hot:#EEC9A0; --b-searing:#E7AE92;
+}
+html[data-theme="dark"]{
+  --b-freezing:#24404F; --b-cold:#27414C; --b-cool:#26423C; --b-mild:#39462C;
+  --b-warm:#51421F; --b-hot:#5C3A22; --b-searing:#5E2F24;
+}
+.clim{margin-top:24px}
+.clim-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:1px;background:var(--rule);
+  border:1px solid var(--rule);border-radius:2px;overflow:hidden}
+@media (max-width:760px){.clim-grid{grid-template-columns:repeat(6,1fr)}}
+@media (max-width:420px){.clim-grid{grid-template-columns:repeat(4,1fr)}}
+.cm{appearance:none;border:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:14px 4px 12px;color:var(--ink);position:relative;transition:transform .12s ease,filter .12s ease}
+.cm:hover{filter:brightness(1.05);transform:translateY(-1px)}
+.cm.b-freezing{background:var(--b-freezing)} .cm.b-cold{background:var(--b-cold)}
+.cm.b-cool{background:var(--b-cool)} .cm.b-mild{background:var(--b-mild)}
+.cm.b-warm{background:var(--b-warm)} .cm.b-hot{background:var(--b-hot)}
+.cm.b-searing{background:var(--b-searing)}
+html[data-theme="dark"] .cm{color:#E8ECEA}
+.cm-m{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;opacity:.78;display:flex;align-items:center;gap:4px}
+.cm-i{opacity:.85;line-height:0}
+.cm-t{font-family:var(--mono);font-size:11px;letter-spacing:.04em;font-weight:500}
+.cm.on{box-shadow:inset 0 0 0 2px var(--ink)}
+.cm.best::after{content:"";position:absolute;top:5px;right:6px;width:5px;height:5px;border-radius:50%;
+  background:var(--warm)}
+.nowdot{width:4px;height:4px;border-radius:50%;background:var(--warm);display:inline-block}
+.clim-d{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:1px;
+  background:var(--rule);border:1px solid var(--rule);border-top:0;border-radius:0 0 2px 2px}
+.clim-d .ro{display:flex;flex-direction:column;gap:8px;background:var(--surface);padding:18px 20px}
+.cd-v{font-family:var(--mono);font-size:15px;letter-spacing:.04em;color:var(--ink)}
+
+/* ---- the season a country is in ---- */
+.chip.season{border-color:currentColor}
+.s-winter{--season:#5E86A8} .s-spring{--season:#5E9A62} .s-summer{--season:#C08A2A}
+.s-autumn{--season:#A8622E} .s-wet{--season:#3C8C93} .s-dry{--season:#A89230} .s-even{--season:#7B8A86}
+.chip.season{color:var(--season)}
+.card.s-winter,.card.s-spring,.card.s-summer,.card.s-autumn,.card.s-wet,.card.s-dry{
+  border-top:2px solid color-mix(in srgb,var(--season) 55%,transparent)}
+.hero.s-winter .title-xl,.hero.s-summer .title-xl,.hero.s-spring .title-xl,
+.hero.s-autumn .title-xl,.hero.s-wet .title-xl,.hero.s-dry .title-xl{
+  text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--season) 45%,transparent);
+  text-decoration-thickness:3px;text-underline-offset:10px}
+
+/* ---- a few words of the language ---- */
+.phrases{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:1px;
+  background:var(--rule);border:1px solid var(--rule);border-radius:2px;margin-top:24px}
+.ph{display:flex;flex-direction:column;gap:5px;background:var(--surface);padding:18px 20px}
+.ph-e{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+.ph-l{font-family:var(--serif);font-size:24px;line-height:1.25}
+.ph-s{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--warm)}
+
+/* ---- trips ---- */
+.card.trip{gap:12px;min-height:170px;cursor:pointer}
+.card.trip:hover{border-color:var(--pin)}
+.trip-foot{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto}
+.sug-trip .added-n{gap:4px}
+.trip-title{font-family:var(--serif);font-size:44px;line-height:1.05;color:var(--ink);background:transparent;
+  border:0;border-bottom:1px dashed var(--rule);width:100%;padding:2px 0;letter-spacing:-.015em}
+.trip-title:hover,.trip-title:focus{border-bottom-color:var(--pin)}
+.trip-note{font-family:var(--sans);font-size:15px;line-height:1.6;color:var(--muted);background:var(--surface);
+  border:1px solid var(--rule);border-radius:2px;padding:12px 14px;width:100%;resize:vertical}
+.day{background:var(--surface);border:1px solid var(--rule);border-radius:2px;padding:20px;margin-bottom:16px}
+.day-h{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  border-bottom:1px solid var(--rule-soft);padding-bottom:12px;margin-bottom:12px}
+.day-l{font-family:var(--serif);font-size:24px;color:var(--ink);background:transparent;border:0;
+  border-bottom:1px dashed transparent;flex:1 1 auto;min-width:0;padding:2px 0}
+.day-l:hover,.day-l:focus{border-bottom-color:var(--pin)}
+.stops{display:flex;flex-direction:column}
+.stop{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--rule-soft)}
+.stop-t{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--warm);
+  min-width:72px;font-variant-numeric:tabular-nums}
+.stop-t i{color:var(--ghost);font-style:normal}
+.stop-n{flex:1 1 auto;min-width:0;font-size:15px}
+.stop-b{display:flex;align-items:center;gap:6px}
+.addstop{display:flex;flex-wrap:wrap;gap:10px;padding-top:14px}
+.addstop input{font-family:var(--sans);font-size:15px;color:var(--ink);background:var(--ground);
+  border:1px solid var(--rule);border-radius:2px;padding:0 14px;min-height:44px}
+.addstop .s-n{flex:1 1 220px;min-width:0}
+.addstop .s-t{font-family:var(--mono);font-size:12px;flex:0 0 auto}
+
+/* ---- the board ---- */
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(146px,1fr));gap:22px}
+.badge{display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center}
+.badge-svg{border-radius:50%;box-shadow:0 6px 18px rgba(0,0,0,.18);display:block;max-width:100%;height:auto}
+.badge-n{font-family:var(--serif);font-size:19px;line-height:1.2;margin-top:3px}
+.badge .tbtn{margin-top:2px}
