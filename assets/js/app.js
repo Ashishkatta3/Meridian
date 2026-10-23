@@ -1304,6 +1304,7 @@ function viewContinent(ct){
   + '<div class="wrap"><div style="padding-top:36px;display:flex;flex-wrap:wrap;gap:32px;align-items:flex-end;justify-content:space-between">'
   + '<div style="flex:999 1 460px;min-width:0"><h1 class="title-xl">'+esc(ct.name)+'</h1>'
   + '<p class="lede" style="padding-top:18px">'+esc(ct.blurb)+'</p></div>'
+  + '<div style="flex:0 0 auto">'+ctl(ct.id, ct.name)+'</div></div>'
   + '<div class="sec">'+secHead('Countries', n+' OF '+ct.countries.length+' LOGGED')
   + '<div class="grid g-cities" style="padding-top:28px">'+cards+'</div></div>'
   + '<div class="sec">'+secHead('Across the continent','00 LOGGED')
