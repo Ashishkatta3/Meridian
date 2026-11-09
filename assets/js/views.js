@@ -134,14 +134,16 @@ function homeVisitor(){
     + stat(CONTINENTS.length,'CONTINENTS')+stat(nPark,'NATIONAL PARKS')
     + stat(BK.length,'BUCKET LIST IDEAS')+stat(EV.length,'EVENTS TRACKED')+'</div></div>'
 
+    /* the map comes before the calendar: it is the thing people
+       recognise the site by, and it reads as the headline */
+    + '<div class="sec"><div class="panel">'
+    + '<div class="panel-head"><span class="lab">THE WHOLE WORLD</span>'
+    + '<button class="btn ghost" data-dl="all">'+ICON.down+'every place as CSV</button></div>'
+    + worldMap(mapPoints('all'), 520)+'</div></div>'
+
     + '<div class="sec">'+secHead('The next six months','SOONEST FIRST')
     + '<div style="padding-top:26px">'+evStrip(soon)+'</div>'
     + '<div style="padding-top:22px"><a class="btn ghost" href="#/events">See the whole calendar</a></div></div>'
-
-    + '<div class="sec"><div class="panel">'
-    + '<div class="panel-head"><span class="lab">THE WHOLE WORLD</span>'
-    + '<a class="btn ghost" href="#/map">Open the full map</a></div>'
-    + worldMap(mapPoints('all'), 460)+'</div></div>'
 
     + '<div class="sec">'+secHead('What it does once you sign in','FOUR THINGS')
     + '<div class="grid g-cities" style="padding-top:28px">'
@@ -203,8 +205,8 @@ function homeSignedIn(){
     + '<span class="lab">WHERE YOU HAVE BEEN</span>'
     + '<span class="chip warm"><span class="pin" style="width:8px;height:8px;box-shadow:none"></span>BEEN</span>'
     + '<span class="chip on"><span class="pin want" style="width:8px;height:8px;box-shadow:none"></span>WANT TO GO</span></span>'
-    + '<a class="btn ghost" href="#/map">Open the full map</a></div>'
-    + worldMap(mapPoints(mapFilter), 460, {filter:true})+'</div></div>'
+    + '<button class="btn ghost" data-dl="all">'+ICON.down+'every place as CSV</button></div>'
+    + worldMap(mapPoints(mapFilter), 520, {filter:true})+'</div></div>'
 
     /* events where they are going */
     + '<div class="sec">'+secHead('Coming up where you are going',
@@ -358,7 +360,11 @@ function trPanel(opts){
   const picker = '<select data-trto aria-label="Translate into">'
     + '<optgroup label="Most travelled">'+L.major.map(opt).join('')+'</optgroup>'
     + '<optgroup label="Everything else">'+L.rest.map(opt).join('')+'</optgroup></select>';
-  const canHear = TR_CAN_SPEAK && trHasVoice(trTo);
+  /* The button is offered whenever the browser can speak at all. Whether
+     a voice for THIS language exists is decided when it is pressed, by
+     trSpeak, which explains itself rather than going quiet — the voice
+     list is often still empty at the moment this markup is built. */
+  const canHear = TR_CAN_SPEAK;
 
   return '<div class="trbox'+(big?' big':'')+'">'
     + '<div class="trhead"><span class="lab">ENGLISH INTO</span>'+picker
@@ -587,7 +593,7 @@ function viewContinents(){
   + '<p class="lede">Continent, then country, then state, then city. Every page carries its own clock, its own weather, '
   + 'what the money is worth and what is happening there this year.</p>'
   + '<div style="display:flex;flex-wrap:wrap;gap:12px;padding-top:4px">'
-  + '<a class="btn ghost" href="#/map">See the map</a>'
+  + '<a class="btn ghost" href="#/">See the map</a>'
   + '<a class="btn ghost" href="#/events">The calendar</a></div></div>'
   + '<div class="hero-side"><div class="board"><div class="board-h"><span class="lab">RIGHT NOW</span>'
   + '<span class="live"><i></i>LIVE</span></div>'+board+'</div></div></div>'
@@ -712,11 +718,20 @@ document.addEventListener('click', async e=>{
   const bn = t.closest('[data-bknow]');
   if (bn){ bkNowOnly = !bkNowOnly; rerender(); return; }
 
-  /* phrasebook and translator speech */
+  /* phrasebook and translator speech — only ever on a press, and a
+     refusal to speak is reported rather than swallowed */
   const say = t.closest('[data-say]');
-  if (say){ trSpeak(say.dataset.say, say.dataset.saylang || trTo); return; }
+  if (say){
+    const r = trSpeak(say.dataset.say, say.dataset.saylang || trTo);
+    if (r !== true){ trNote = r; rerender(); }
+    return;
+  }
   const tsay = t.closest('[data-trsay]');
-  if (tsay){ trSpeak(trOut, trTo); return; }
+  if (tsay){
+    const r = trSpeak(trOut, trTo);
+    if (r !== true){ trNote = r; rerender(); }
+    return;
+  }
   const tcopy = t.closest('[data-trcopy]');
   if (tcopy){
     try { await navigator.clipboard.writeText(trOut); tcopy.textContent = 'COPIED'; }
@@ -735,7 +750,9 @@ document.addEventListener('click', async e=>{
     const r = await trTranslate(trText, trFrom, trTo);
     trBusy = false; trOut = r.text || ''; trNote = r.note || '';
     rerender();
-    if (trOut && TR_CAN_SPEAK && trHasVoice(trTo)) trSpeak(trOut, trTo);
+    /* Deliberately silent. Translating gives you the text; hearing it is
+       a separate press of HEAR IT, because a phone that reads every
+       translation out loud by itself is unusable in a quiet room. */
     return;
   }
 

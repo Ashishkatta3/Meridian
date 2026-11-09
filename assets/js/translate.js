@@ -142,18 +142,33 @@ async function trTranslate(text, from, to){
   const k = trKey(t, from, to);
   if (TR_CACHE[k]) return {text:TR_CACHE[k], cached:true, note:''};
 
+  /* No "de=" parameter. It is meant to be a real address that raises the
+     daily limit, and MyMemory answers an invalid one with
+     responseStatus 403 and the words INVALID EMAIL PROVIDED sitting in
+     the translatedText field — which then gets displayed as though it
+     were the translation. Better to go without. */
   const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(t)
-    + '&langpair=' + encodeURIComponent(from + '|' + to)
-    + '&de=meridian@localhost';
+    + '&langpair=' + encodeURIComponent(from + '|' + to);
   try {
     const r = await fetch(url);
     if (!r.ok) throw new Error('http ' + r.status);
     const j = await r.json();
+    const status = j && j.responseStatus;
     const out = j && j.responseData && j.responseData.translatedText;
+
+    /* The status is the only reliable signal. The error text is put in
+       the same field as a real translation, so trusting the field alone
+       shows the user an error message formatted as their sentence. */
+    if (status && String(status) !== '200'){
+      const why = String((j && j.responseDetails) || out || '').trim();
+      return {text:'', note: /quota|limit/i.test(why)
+        ? 'The free translation quota for this network is used up for today. The phrasebook on each country page still works.'
+        : 'The translation service refused that one' + (why ? ' (' + why.toLowerCase() + ')' : '') + '. Try again, or shorter.'};
+    }
     if (!out) throw new Error('empty');
-    /* MyMemory returns its quota message in the translation field */
-    if (/MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(out))
-      return {text:'', note:'The free translation quota for this network is used up for today. The phrasebook below still works.'};
+    if (/MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID EMAIL/i.test(out))
+      return {text:'', note:'The free translation quota for this network is used up for today. The phrasebook on each country page still works.'};
+
     const clean = String(out)
       .replace(/&quot;/g,'"').replace(/&#39;/g,"'")
       .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
@@ -189,22 +204,46 @@ function trHasVoice(code){
   return TR_VOICES.some(v=>String(v.lang||'').toLowerCase().slice(0,2) === want);
 }
 
+/* Speaks, but ONLY in a voice that genuinely matches the language.
+
+   This is the whole point: handing Japanese text to an English voice
+   does not produce accented Japanese, it produces noise — the engine
+   sounds out the characters with English rules. Setting u.lang alone
+   does not prevent that, because a browser with no Japanese voice
+   installed silently falls back to its default one. So a matching
+   voice has to be found and attached, and if there is none the honest
+   answer is to say so and stay quiet.
+
+   Returns true if it spoke, or a string saying why it did not. */
 function trSpeak(text, code){
-  if (!TR_CAN_SPEAK || !text) return false;
+  if (!text) return 'Nothing to read out yet.';
+  if (!TR_CAN_SPEAK) return 'This browser cannot speak text aloud.';
   try {
+    if (!TR_VOICES.length) trLoadVoices();
+    const tag  = trTag(code);
+    const low  = tag.toLowerCase();
+    const two  = low.slice(0, 2);
+    const lang = x => String(x.lang || '').toLowerCase().replace(/_/g,'-');
+    const v = TR_VOICES.find(x=>lang(x) === low)
+           || TR_VOICES.find(x=>lang(x).slice(0,2) === two);
+
+    if (!v){
+      /* An empty list means the voices have not arrived yet rather than
+         that none exist, so that case asks for another tap instead of
+         claiming the language is missing. */
+      if (!TR_VOICES.length) return 'The voices are still loading on this device — tap again in a second.';
+      return 'This device has no ' + trName(code) + ' voice installed, so there is nothing to play it with. '
+           + 'The text is still right — copy it, or show someone the screen.';
+    }
+
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(String(text));
-    const tag = trTag(code);
-    u.lang = tag;
-    if (!TR_VOICES.length) trLoadVoices();
-    const two = tag.toLowerCase().slice(0,2);
-    const v = TR_VOICES.find(x=>String(x.lang||'').toLowerCase() === tag.toLowerCase())
-           || TR_VOICES.find(x=>String(x.lang||'').toLowerCase().slice(0,2) === two);
-    if (v) u.voice = v;
-    u.rate = 0.92;                 // a shade slow, because it is being copied
+    u.voice = v;
+    u.lang  = v.lang || tag;
+    u.rate  = 0.92;                // a shade slow, because it is being copied
     window.speechSynthesis.speak(u);
     return true;
-  } catch(e){ return false; }
+  } catch(e){ return 'The voice could not be started on this device.'; }
 }
 
 const trStopSpeaking = () => { try { window.speechSynthesis.cancel(); } catch(e){} };

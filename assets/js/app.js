@@ -446,7 +446,11 @@ function paintWeather(){
 }
 
 /* ---------- theme ---------- */
-let themeMode = localStorage.getItem('meridian-theme') || 'auto';
+/* iOS Safari with "block all cookies" throws on localStorage rather than
+   returning null, and an unguarded read here would kill the rest of this
+   file — every route, every view. Hence the try. */
+let themeMode = 'auto';
+try { themeMode = localStorage.getItem('meridian-theme') || 'auto'; } catch(e){}
 let routeIsNight = false;
 function applyTheme(){
   const dark = themeMode === 'auto' ? routeIsNight : themeMode === 'dark';
@@ -455,9 +459,70 @@ function applyTheme(){
 }
 document.getElementById('themebtn').addEventListener('click',()=>{
   themeMode = themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto';
-  localStorage.setItem('meridian-theme', themeMode);
+  try { localStorage.setItem('meridian-theme', themeMode); } catch(e){}
   applyTheme();
 });
+
+/* ---------- the nav ----------
+   Static markup, so this is wired once at startup rather than on every
+   render. A tap on MENU opens the bar; a tap on a group opens that group
+   and closes its sibling; anything that navigates closes the lot. */
+function wireNav(){
+  const bar  = document.getElementById('topbar');
+  const menu = document.getElementById('menubtn');
+  if (!bar || !menu) return;
+
+  const closeGroups = () => bar.querySelectorAll('.navgrp.open').forEach(g=>{
+    g.classList.remove('open');
+    const b = g.querySelector('.grpbtn');
+    if (b) b.setAttribute('aria-expanded','false');
+  });
+  const closeAll = () => {
+    closeGroups();
+    bar.classList.remove('open');
+    menu.setAttribute('aria-expanded','false');
+  };
+  NAV_CLOSE = closeAll;
+
+  menu.addEventListener('click', e=>{
+    e.stopPropagation();
+    const open = !bar.classList.contains('open');
+    bar.classList.toggle('open', open);
+    menu.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) closeGroups();
+  });
+
+  bar.querySelectorAll('.grpbtn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.preventDefault(); e.stopPropagation();
+      const grp  = btn.closest('.navgrp');
+      const open = !grp.classList.contains('open');
+      /* On a desktop these are dropdowns and only one may hang open at a
+         time. On a phone they are accordions inside a list, where
+         closing one to open another reads as links disappearing — so
+         there, leave the other groups alone. */
+      if (window.innerWidth > 980) closeGroups();
+      grp.classList.toggle('open', open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+
+  bar.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click', closeAll));
+  document.addEventListener('click', e=>{ if (!e.target.closest('#topbar')) closeAll(); });
+  document.addEventListener('keydown', e=>{ if (e.key === 'Escape') closeAll(); });
+  /* widening the window must not leave a phone menu hanging open */
+  window.addEventListener('resize', ()=>{ if (window.innerWidth > 980) closeAll(); });
+}
+let NAV_CLOSE = ()=>{};
+
+/* which nav item is the current page, and which group contains it */
+function paintNav(now){
+  document.querySelectorAll('a[data-nav]').forEach(a=>
+    a.classList.toggle('on', a.dataset.nav === now));
+  document.querySelectorAll('.navgrp').forEach(g=>
+    g.classList.toggle('here', !!g.querySelector('a[data-nav].on')));
+  NAV_CLOSE();
+}
 
 /* ---------- CSV export ---------- */
 function csvOf(rows){
@@ -1175,23 +1240,9 @@ function cityCard(c){
 
 /* ---------- full map page ---------- */
 let mapFilter = 'all';
-function viewMap(){
-  routeIsNight = isNightAt(38,-97);
-  const C = counts(), pts = mapPoints(mapFilter);
-  const btn = (v,l) => '<button type="button" data-filter="'+v+'" aria-pressed="'+(mapFilter===v)+'">'+l+'</button>';
-  return crumbs([['World','#/continents'],['Map','']])
-  + '<div class="wrap"><div style="padding-top:36px;display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end;justify-content:space-between">'
-  + '<div><h1 class="title-l">The map</h1>'
-  + '<p class="lede" style="padding-top:14px">Every country, every state and every city in the atlas. Scroll to zoom, drag to move, click a pin to open it.</p></div>'
-  + '<span class="mapfilter">'+btn('all','ALL '+pts.length)+btn('been','BEEN')+btn('want','WANT TO GO')+'</span></div>'
-  + '<div style="padding-top:28px"><div class="panel">'+worldMap(pts, 620)+'</div></div>'
-  + '<div class="stats" style="margin-top:34px">'+stat(C.continents,'CONTINENTS')+stat(C.countries,'COUNTRIES')
-  + stat(C.states,'STATES')+stat(C.cities,'CITIES')+stat(C.places,'PARKS &amp; REGIONS')+stat(C.wish,'ON THE LIST')+'</div>'
-  + '<div class="sec" style="padding-top:40px"><div class="panel"><div class="panel-head" style="border:0">'
-  + '<span style="display:flex;flex-direction:column;gap:6px"><span class="card-t" style="font-size:26px">Every pin, one file</span>'
-  + '<span class="note">Imports into Google My Maps with your been and want marks in the Status column.</span></span>'
-  + '<button class="btn" data-dl="all">'+ICON.down+'meridian-all-places.csv</button></div></div></div></div>';
-}
+/* There is no /map page any more — the map is a panel on the home page,
+   and #/map redirects there. mapFilter and mapPoints still live on,
+   because the home panel uses both. */
 
 /* ---------- been / want lists ---------- */
 function viewList(kind){
@@ -1559,11 +1610,6 @@ function viewCity(c){
   const prev = c.state.cities[(idx-1+c.state.cities.length)%c.state.cities.length];
   const next = c.state.cities[(idx+1)%c.state.cities.length];
   const todo = entriesOf(c.key,'todo'), eat = entriesOf(c.key,'eat');
-  const places = todo.length
-    ? '<div class="places"><div class="places-l">'
-      + todo.map(t=>'<a href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(t.t+', '+c.name+', '+c.state.name)+'" target="_blank" rel="noopener">'+pinFor(statusOf(t.id))+esc(t.t)+'</a>').join('')
-      + '</div><div class="places-r"><span class="note">Each name opens in Google Maps. The CSV carries all of them, and your marks, in one import.</span></div></div>'
-    : '';
   return crumbs([['World','#/continents'],[HOME_CONT.name, contHref(HOME_CONT)],[USA.name, countryHref(USA)],[c.state.name, stateHref(c.state)],[c.name,'']])
   + '<div class="wrap"><div style="padding-top:36px"><div class="hero"><div class="hero-main">'
   + '<h1 class="title-xl">'+esc(c.name)+'</h1>'
@@ -1582,7 +1628,6 @@ function viewCity(c){
   + '<div class="sec">'+secHead('The year in '+esc(c.name),
       (seasonNow('city:'+c.key) || {label:'MONTH BY MONTH'}).label)
   + climatePanel('city:'+c.key, c.name)+'</div>'
-  + (places ? '<div class="sec">'+secHead('On the map','OPENS IN GOOGLE MAPS')+'<div class="panel" style="margin-top:28px">'+places+'</div></div>' : '')
   + '<div class="pagenav">'
   + '<a href="'+cityHref(prev)+'"><span class="lab-s">← PREVIOUS</span><span class="nt">'+esc(prev.name)+'</span></a>'
   + '<a class="lab" href="'+stateHref(c.state)+'" style="padding:8px 0">ALL OF '+esc(c.state.name).toUpperCase()+'</a>'
@@ -1868,6 +1913,10 @@ function route(){
   scrollTo = null;
   const first = parts[0];
 
+  /* The map is the home page's own panel now, not a page of its own.
+     Old links and bookmarks still have to land somewhere. */
+  if (first === 'map'){ location.replace('#/'); return; }
+
   if (!parts.length){ html = viewHome(); }
   else if (first === 'continents'){ html = viewContinents(); title = 'The atlas — Meridian'; }
   else if (first === 'events'){ html = viewEvents(); title = 'The calendar — Meridian'; }
@@ -1875,7 +1924,6 @@ function route(){
   else if (first === 'translate'){ html = viewTranslate(); title = 'Translate — Meridian'; }
   else if (first === 'plan'){ html = viewPlan(); title = 'Plan a trip — Meridian'; }
   else if (first === 'welcome'){ html = viewOnboard(); title = 'Set up your atlas — Meridian'; }
-  else if (first === 'map'){ html = viewMap(); title = 'The map — Meridian'; }
   else if (first === 'been' || first === 'want'){ html = viewList(first); title = (first==='been'?'Been there':'Want to go')+' — Meridian'; }
   else if (first === 'board'){ html = viewBoard(); title = 'The board — Meridian'; }
   else if (first === 'trips'){
@@ -1921,8 +1969,7 @@ function route(){
   document.getElementById('app').innerHTML = html;
   document.title = title;
   document.getElementById('footnote').textContent = foot;
-  document.querySelectorAll('a[data-nav]').forEach(a=>
-    a.classList.toggle('on', a.dataset.nav === (first || 'home')));
+  paintNav(first || 'home');
   applyTheme(); tick(); wireMaps(); paintPhotos(); wireAddBox(); wireHomePort(); paintAuthState();
   paintMoney(); wireViews();
   loadWeather(points);
@@ -2026,6 +2073,7 @@ res.addEventListener('click', ()=>{ res.classList.add('hidden'); box.value=''; }
 document.addEventListener('click', e=>{ if (!e.target.closest('.searchwrap')) res.classList.add('hidden'); });
 box.addEventListener('keydown', e=>{ if (e.key === 'Escape'){ res.classList.add('hidden'); box.blur(); } });
 
+wireNav();
 route();
 if (scrollTo){ const el = document.getElementById(scrollTo); if (el) el.scrollIntoView({block:'start'}); }
 /* one keyless call for today's exchange rates, in the money you live on */
