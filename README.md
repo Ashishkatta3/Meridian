@@ -53,6 +53,22 @@ assets/js/local.js      currency and language for every country, with a card of
                         phrases in 68 languages
 assets/js/features.js   trips, itineraries, badges, the daylight terminator,
                         live exchange rates
+assets/js/parks.js      all 61 national parks that sit in a state, plus the state
+                        parks, seashores and monuments worth the drive, and the
+                        towns that exist because of them. Merges into data.js.
+assets/js/cities.js     what to do and where to eat in the US cities people
+                        actually travel to. Merges into data.js.
+assets/js/events.js     151 recurring events and natural windows worldwide, with
+                        the logic that works out what is on now and what is next
+assets/js/bucket.js     102 things to do rather than places to see, each with
+                        booking links. YOUR AFFILIATE IDS GO AT THE TOP.
+assets/js/translate.js  text translation, speech output and speech input, each
+                        failing independently of the others
+assets/js/plan.js       the itinerary planner, and the notes on replacing it
+                        with a real model behind an Edge Function
+assets/js/views.js      the pages added after the atlas: both home pages, the
+                        calendar, the bucket list, the translator, the planner
+                        and the sign-up walkthrough
 supabase/schema.sql     run this once in the Supabase SQL editor
 assets/css/styles.css   the whole design: tokens, light + dark, every component
 assets/js/data.js       YOUR DATA. The only file you need to edit.
@@ -392,6 +408,125 @@ overrides it and the choice is remembered.
 
 All colours are CSS custom properties at the top of `styles.css`, defined once for
 light and once for `html[data-theme="dark"]`. Change them in one place.
+
+---
+
+## What the home page does
+
+There are two of them.
+
+**Signed out** it shows what the world is doing: everything happening in the
+next six months, soonest first, the map, and the size of the atlas.
+
+**Signed in** it shows your own number — what percentage of the world's 179
+countries you have been to — and then three things that change on their own:
+
+- **The window just opened.** Anywhere on your want list whose own best-time-to-go
+  includes this month. Nothing is fetched for this; it is read out of the
+  `s` field in `profile.js` and matched against today's date, which is why the
+  panel is different every month without anyone updating it.
+- **Coming up where you are going.** Events in any country, state or city you
+  have marked, over the next eight months.
+- **Best places to be in [month].** The same best-time matching, across all 179
+  countries, excluding the ones you have already been to.
+
+This is the part that gives somebody a reason to come back. A travel diary is
+read once; a want list is a standing question that the calendar keeps answering.
+
+---
+
+## Events
+
+`events.js` holds 151 rows. Each is a recurring event or a natural window —
+Mardi Gras, Oktoberfest, the Mara river crossings, aurora season, the
+Albuquerque balloon fiesta, red crab migration on Christmas Island.
+
+Dates that move are marked `v` and the site prints **"date varies"** rather than
+a day. Mardi Gras, Holi, Diwali, Carnival and Chinese New Year all shift with
+lunar calendars or with Easter, and a hardcoded date for those is wrong within a
+year. Long windows are marked `w` and print as a range.
+
+Events reach three places automatically: the home page, the country page, and
+the planner, which puts an event on the day it falls on.
+
+---
+
+## The bucket list
+
+`bucket.js` holds 102 activities across eleven categories, each with the months
+it is actually possible and a search query.
+
+**The links are searches, not product pages.** A deep link to one operator's
+listing is a 404 within a year; a search for "Verzasca dam bungee jump" will
+still work. Each row can also carry an `official` URL where the operator *is*
+the activity and is not going anywhere — the St Moritz bob run, for instance.
+
+### Making money from it
+
+Paste your IDs into `BK_PARTNER` at the top of `bucket.js`:
+
+```js
+const BK_PARTNER = {
+  getyourguide: "",   // from partner.getyourguide.com
+  viator:       ""    // from viatorpartners.com
+};
+```
+
+Every outbound link on the site then carries them. Both programmes are free to
+join and pay roughly 8% of the booking. Until you fill them in the links work
+exactly the same, they just do not pay.
+
+---
+
+## Translating
+
+Three capabilities that fail independently, so losing one never takes the panel
+down with it.
+
+- **Text** goes through MyMemory's public endpoint. No key, no account, and
+  rate-limited per IP, which is why there is a cache in front of it. If the
+  quota runs out the panel says so and the phrasebook is still on the page.
+- **Speaking** uses `SpeechSynthesis`. Works everywhere. The site checks whether
+  the device actually has a voice for the language before offering the button,
+  because reading Thai in an English voice is worse than not offering it.
+- **Listening** uses `SpeechRecognition`, which **Chrome, Edge and Safari
+  support and Firefox does not.** The microphone button is not drawn at all on
+  browsers that cannot do it, rather than drawn and broken. It needs HTTPS and a
+  permission grant on a phone.
+
+The translator is on its own page and also at the bottom of every country page,
+with that country's language already selected.
+
+---
+
+## The planner
+
+Three questions — where, how many days, what budget — and it writes the days out.
+
+It is **not** a language model, and that is deliberate. Every line comes from a
+row in this repository, so it cannot invent a museum that closed in 2019 or a
+festival that does not exist. The trade-off is that it only knows places the
+atlas covers, and it says so plainly when it runs short rather than padding the
+later days.
+
+Budget does two things: it changes what gets suggested (lean weights towards
+parks, markets and walking; no-limit includes the guided and ticketed things),
+and if you give it a total it divides by the days and tells you whether that is
+tight or generous for the destination's cost band.
+
+### Putting a real model behind it
+
+Do not put an API key in `plan.js`. Anything in that file is readable by anyone
+who opens the page, and a leaked key is billed to you. The shape to aim for:
+
+1. Deploy a Supabase Edge Function holding the key as a secret.
+2. Have it call the model with `planContext(dest)` as grounding, so the model
+   works from this atlas rather than from memory.
+3. Replace the body of `planTrip()` with a fetch to that function, and keep
+   `buildPlan()` as the fallback for when it is unreachable.
+
+`planContext()` already exists for exactly this and returns everything the atlas
+knows about a destination as plain text. Nothing calls it yet.
 
 ---
 
