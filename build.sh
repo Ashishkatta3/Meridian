@@ -20,7 +20,7 @@ html = io.open('index.html', encoding='utf-8').read()
 
 # drop every tag we are about to inline, however the file is formatted
 html = re.sub(r'[ \t]*<script src="assets/js/[^"]+"></script>\n?', '', html)
-html = re.sub(r'[ \t]*<link rel="stylesheet" href="assets/css/styles.css">\n?', '', html)
+html = re.sub(r'[ \t]*<link rel="stylesheet" href="assets/css/styles\.css[^"]*">\n?', '', html)
 
 css = io.open('assets/css/styles.css', encoding='utf-8').read()
 js  = "\n;\n".join(io.open('assets/js/' + f, encoding='utf-8').read() for f in files)

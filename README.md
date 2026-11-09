@@ -28,6 +28,24 @@ about ten minutes — see *Accounts and the database* below.
 The `.nojekyll` file is already here — it stops GitHub from ignoring folders and
 is the usual reason a Pages site loads with no styling.
 
+### Bump `?v=` on every deploy
+
+Every script and stylesheet in `index.html` ends with `?v=3`. **Change that
+number — all of them — each time you upload a new version.**
+
+It is one find-and-replace and it matters more than it looks. Browsers,
+phones especially, cache each JS file separately and for a long time. Without
+a new number a phone can end up holding a *new* `index.html` next to an *old*
+`events.js`, which produces a site where the pages exist but the data behind
+them does not: menus that go nowhere, sections that render empty. It looks
+like a bug in the code and it is not. Desktop usually escapes it because you
+have hard-refreshed at some point; a phone almost never does.
+
+If a phone is already stuck on an old copy, bumping the number fixes it on the
+next load. To force it right now: iOS Safari → Settings → Safari → Advanced →
+Website Data → remove the site; Android Chrome → ⋮ → Settings → Site settings
+→ Storage.
+
 To run it locally, don't open `index.html` directly from the file system (browsers
 block the scripts). Serve it instead:
 
@@ -142,8 +160,10 @@ put its regions into `STATES`. The state and city levels follow automatically.
 
 ## The map
 
-The home page and `#/map` both show the whole world. **Scroll to zoom, drag to
-pan, click a pin — or its name — to open that place.** Pins hold their size as you zoom.
+The map lives on the home page, above the events. There is no separate map
+page any more — `#/map` redirects home, so old links still land somewhere.
+**Scroll to zoom, drag to pan, click a pin — or its name — to open that
+place.** Pins hold their size as you zoom.
 
 **Day and night are drawn on it.** The shaded half is wherever the sun is
 currently below the horizon, worked out from the sun's real position at the
