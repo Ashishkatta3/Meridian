@@ -276,11 +276,136 @@ function buildPlan(opts){
   };
 }
 
-/* The public entry point. Async on purpose: when this is swapped for a
-   real model behind an Edge Function, nothing that calls it has to
-   change. See the note at the top of this file. */
+/* ===========================================================
+   TEMPORARY in-browser AI planner.
+
+   ⚠️  THE KEY BELOW IS VISIBLE TO ANYONE WHO OPENS THE PAGE.
+   This is fine ONLY because:
+     - the site is private and link-shared, not public, and
+     - the free OpenRouter key's worst case is a used-up daily quota,
+       not a bill.
+   Do NOT paste a paid xAI or Groq key here — that is real money anyone
+   with the link could spend. Move to the Edge Function (see top of
+   file) before the site goes public, and delete this key.
+
+   Why OpenRouter and not Groq or xAI here:
+     - Groq is free but BLOCKS browser calls (CORS), so it cannot be
+       reached from a page without a backend proxy.
+     - xAI Grok allows browser calls but has no free tier.
+     - OpenRouter allows browser calls AND has free models — the only
+       one that works from the browser for free. All three speak the
+       same OpenAI-style API, so switching later is a 3-line change.
+   =========================================================== */
+const AI = {
+  on:    true,                                             // flip to false to force the built-in planner
+  url:   'https://openrouter.ai/api/v1/chat/completions',
+  model: 'meta-llama/llama-3.3-70b-instruct:free',         // free; see openrouter.ai/models (the ":free" ones)
+  key:   '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',                                               // ← paste your OpenRouter key: openrouter.ai/keys
+  // --- to use xAI Grok instead (PAID, needs card + credits at console.x.ai) ---
+  //   url:'https://api.x.ai/v1/chat/completions', model:'grok-3', key:'xai-...'
+  // --- Groq works only once you move to the Edge Function (browser-blocked) ---
+  //   url:'https://api.groq.com/openai/v1/chat/completions', model:'llama-3.3-70b-versatile'
+};
+
+/* Ask the model for the day-by-day blocks, grounded in the atlas.
+   Returns an array of { blocks:[...] } per day, or null on any failure
+   so the caller falls back to the deterministic plan. */
+async function planAI(opts){
+  if (!AI.on || !AI.key) return null;
+  const dest   = opts.dest;
+  const days   = Math.max(1, Math.min(21, parseInt(opts.days, 10) || 5));
+  const budget = PLAN_BUDGET[opts.budget] || PLAN_BUDGET.mid;
+  const start  = opts.start instanceof Date ? opts.start : new Date();
+  const name   = dest.obj.name;
+
+  const sys = 'You are a travel planner. Build a day-by-day itinerary. '
+    + 'PREFER the places listed under GROUNDING below — they are verified. '
+    + 'You may add well-known places not listed, but for any place NOT in the '
+    + 'grounding, set its "href" to '
+    + '"https://www.google.com/maps/search/?api=1&query=" + the place name and city, '
+    + 'url-encoded, so it can be checked. Never invent opening hours or prices. '
+    + 'Reply with ONLY valid JSON, no markdown, in exactly this shape: '
+    + '{"days":[{"blocks":[{"time":"MORNING","kind":"sight","title":"","note":"",'
+    + '"tag":"","where":"","href":""}]}]}. '
+    + '"kind" is one of: sight, food, activity, event. "time" is a short label '
+    + 'like MORNING, AFTERNOON, EVENING, DINNER. Keep "note" to one sentence.';
+
+  const user = 'DESTINATION: ' + name + '\n'
+    + 'DAYS: ' + days + '\n'
+    + 'MONTH: ' + PLAN_MON[start.getMonth()] + '\n'
+    + 'BUDGET: ' + budget.name + ' — ' + budget.note + '\n'
+    + 'Give exactly ' + days + ' day objects.\n\n'
+    + 'GROUNDING:\n' + planContext(dest);
+
+  /* fall back rather than hang if the network is slow */
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), 28000);
+  try {
+    const r = await fetch(AI.url, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer ' + AI.key,
+        /* OpenRouter likes these two; harmless elsewhere */
+        'HTTP-Referer':'https://meridian.local',
+        'X-Title':'Meridian'
+      },
+      body: JSON.stringify({
+        model: AI.model,
+        temperature: 0.7,
+        max_tokens: 2200,
+        messages:[{role:'system', content:sys}, {role:'user', content:user}]
+      }),
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    if (!r.ok) return null;
+    const j = await r.json();
+    let text = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if (!text) return null;
+
+    /* models sometimes wrap JSON in prose or ```json fences — dig it out */
+    let data;
+    try { data = JSON.parse(text); }
+    catch(e){
+      const a = text.indexOf('{'), b = text.lastIndexOf('}');
+      if (a < 0 || b < 0) return null;
+      try { data = JSON.parse(text.slice(a, b + 1)); } catch(e2){ return null; }
+    }
+    if (!data || !Array.isArray(data.days) || !data.days.length) return null;
+
+    /* keep only the fields the renderer uses, and only valid kinds */
+    const kinds = {sight:1, food:1, activity:1, event:1};
+    return data.days.map(d=>({
+      blocks: (Array.isArray(d.blocks) ? d.blocks : [])
+        .filter(x=>x && x.title)
+        .map(x=>({
+          time:  String(x.time || '').slice(0, 24) || 'LATER',
+          kind:  kinds[x.kind] ? x.kind : 'sight',
+          title: String(x.title).slice(0, 120),
+          note:  String(x.note || '').slice(0, 300),
+          tag:   String(x.tag || '').slice(0, 40),
+          where: String(x.where || ''),
+          href:  /^https?:\/\//.test(x.href || '') || String(x.href||'').indexOf('#/') === 0 ? x.href : ''
+        }))
+    }));
+  } catch(e){ clearTimeout(timer); return null; }
+}
+
+/* The public entry point. Builds the deterministic plan first — it carries
+   the dates, money, climate, events and notes — then, if the model answers,
+   swaps its richer blocks in day by day. If the model is off, keyless, slow
+   or fails, you simply get the deterministic plan. Nothing else changes. */
 async function planTrip(opts){
-  return buildPlan(opts);
+  const base = buildPlan(opts);
+  const ai = await planAI(opts);
+  if (ai){
+    base.days.forEach((day, i)=>{ if (ai[i] && ai[i].blocks && ai[i].blocks.length) day.blocks = ai[i].blocks; });
+    base.ai = true;
+  } else {
+    base.ai = false;
+  }
+  return base;
 }
 
 /* ===========================================================
