@@ -264,52 +264,119 @@ function hashOf(s){
   for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return Math.abs(h);
 }
+/* Twelve travel-poster palettes: [gradient from, gradient to, light ink,
+   ribbon]. Bright on purpose — a shelf of these should look like a wall
+   of enamel pins, not a drawer of commemorative coins. */
 const BADGE_INK = [
-  ['#1c3f5e','#e8b14a','#f3ece0'], ['#5e1c2c','#d9a441','#f5ece6'],
-  ['#1f4536','#cfa13a','#eef0e6'], ['#3a2259','#d79a4e','#f0eaf3'],
-  ['#5a3410','#dfc04a','#f6eee2'], ['#13394a','#bcd6c8','#eef3f2'],
-  ['#4a1530','#e0a6ad','#f7ebee'], ['#243a1c','#d2c050','#eff1e4']
+  ['#FF5E5B','#FFB400','#FFF8E7','#B3331F'],
+  ['#00A6A6','#4ECDC4','#F0FFFE','#055E60'],
+  ['#5F2D8C','#C44FD6','#FBEEFF','#3C1559'],
+  ['#0B6E4F','#8AC926','#F5FFE8','#09462F'],
+  ['#1A4E8C','#4CC9F0','#EAF8FF','#10325C'],
+  ['#D62828','#F77F00','#FFF4E6','#8C1414'],
+  ['#7F2982','#E36414','#FFF0E0','#4E1551'],
+  ['#006D77','#83C5BE','#EDF6F9','#02454C'],
+  ['#B5179E','#F72585','#FFEAF6','#730F63'],
+  ['#3A0CA3','#4361EE','#E8EBFF','#250774'],
+  ['#FB8500','#FFB703','#FFFBF0','#A85600'],
+  ['#2D6A4F','#52B788','#EBFFF5','#1B4332']
 ];
-/* eight motifs, picked by the place's own hash */
-function badgeMotif(i, c){
-  const M = [
-    '<path d="M22 46 34 22l12 24Z"/><path d="M14 46h40"/>',                       // peak
-    '<circle cx="34" cy="31" r="10"/><path d="M14 46h40M20 38h28"/>',             // sun over water
-    '<path d="M20 46V24h28v22"/><path d="M26 46V34h6v12M38 36h6v10"/>',           // old town
-    '<path d="M34 16v30M22 24h24M19 46h30"/><path d="M26 24c0 8 4 14 8 14s8-6 8-14"/>', // gate
-    '<path d="M16 42c6-4 12-4 18 0s12 4 18 0"/><path d="M16 34c6-4 12-4 18 0s12 4 18 0"/><circle cx="34" cy="20" r="5"/>',
-    '<path d="M34 14 44 40H24Z"/><path d="M18 46h32"/>',                          // pyramid
-    '<circle cx="34" cy="30" r="12"/><path d="M34 18v24M22 30h24"/>',             // compass rose
-    '<path d="M20 46V22l14-8 14 8v24"/><path d="M30 46V34h8v12"/>'                // house on a hill
+
+/* Six outlines. A badge is recognisable from across the room by its
+   shape before you read the name. */
+function badgeOutline(i){
+  const S = [
+    '<circle cx="50" cy="46" r="42"/>',
+    '<path d="M9 11h82v41c0 22-19 34-41 41-22-7-41-19-41-41z"/>',
+    '<path d="M50 4 88 25v42L50 88 12 67V25z"/>',
+    '<rect x="10" y="6" width="80" height="80" rx="19"/>',
+    '<path d="M32 5h36l23 23v36L68 87H32L9 64V28z"/>',
+    '<path d="M11 8h78v54L50 90 11 62z"/>'
   ];
-  return M[i % M.length];
+  return S[i % S.length];
 }
+
+/* Sixteen motifs, drawn in a 64-square and scaled into the shape.
+   Each is [strokePaths, fillPaths]. */
+function badgeMotif(i){
+  const M = [
+    /* peaks and sun */        [['M6 46h52','M14 44 28 20l9 13 7-9 12 20'], ['46 12 4']],
+    /* sun over water */      [['M8 44h48M14 38h36'], ['32 20 9']],
+    /* skyline */             [['M6 46h52'], ['12 26 8 20','24 18 9 28','38 24 8 22','50 30 7 16']],
+    /* palm */                [['M32 46V24','M32 24c-8-6-16-4-20 2','M32 24c8-6 16-4 20 2','M32 24c-4-8-2-14 4-18','M32 24c4-8 10-10 16-8','M6 48h52']],
+    /* pagoda */              [['M10 20h44l-8-8H18zM14 32h36l-7-8H21zM20 44h24l-5-8H25zM32 44v6M8 52h48']],
+    /* bridge */              [['M4 44h56','M14 44V14M50 44V14','M14 18c12 14 24 14 36 0','M20 44V30M28 44V26M36 44V26M44 44V30']],
+    /* aurora */              [['M6 34c10-14 22-14 32 0s14 12 20 4','M6 44c10-14 22-14 32 0s14 12 20 4','M10 24c8-10 18-10 26 0'], ['14 12 1.6','50 16 1.6','40 8 1.3']],
+    /* cactus */              [['M30 50V18M30 32c-6 0-9-3-9-9v6c0 6 3 9 9 9M30 28c6 0 9-4 9-10v8c0 6-3 10-9 10','M8 52h48'], ['48 14 5']],
+    /* lighthouse */          [['M26 48 30 18h8l4 30zM28 30h12','M24 48h20','M42 22l12-6M42 26l12 6','M6 52h52']],
+    /* volcano */             [['M8 48h48','M16 48 30 20h6l14 28','M30 20c0-6 4-8 4-14M36 20c2-5 6-6 7-11']],
+    /* pines */               [['M8 48h48','M18 44 18 30M32 44V24M46 44V30'], ['18 18 7 12','32 10 9 14','46 18 7 12']],
+    /* canyon arch */         [['M8 50h48','M14 50V24c0-10 24-10 24 0v26','M38 50V28c0-6 12-6 12 0v22']],
+    /* island */              [['M4 46c8-4 14-4 22 0s14 4 22 0','M34 40V26','M34 26c-6-5-12-3-15 2','M34 26c6-5 12-3 15 2'], ['14 16 5']],
+    /* compass rose */        [['M32 8v48M8 32h48','M20 20 44 44M44 20 20 44'], ['32 32 4']],
+    /* aeroplane */           [['M32 10v40','M10 34 32 26l22 8','M22 50l10-5 10 5']],
+    /* anchor */              [['M32 18v30','M18 32h28','M12 38c0 12 10 18 20 18s20-6 20-18'], ['32 12 5']]
+  ];
+  const m = M[i % M.length];
+  return {stroke:m[0] || [], fill:m[1] || []};
+}
+
+let BADGE_N = 0;
 function badgeSVG(name, sub, size){
   const h = hashOf(name + '|' + (sub||''));
   const pal = BADGE_INK[h % BADGE_INK.length];
-  const motif = badgeMotif(h >> 3, pal[1]);
+  const shape = badgeOutline(h >> 3);
+  const motif = badgeMotif(h >> 7);
   const s = size || 150;
-  const ring = (h >> 7) % 3;               // three rim treatments
-  const rim = ring === 0
-    ? '<circle cx="34" cy="34" r="31" fill="none" stroke="'+pal[1]+'" stroke-width="1.4" stroke-dasharray="2.5 2.5"/>'
-    : ring === 1
-    ? '<circle cx="34" cy="34" r="31.5" fill="none" stroke="'+pal[1]+'" stroke-width="2.6"/>'
-    : '<circle cx="34" cy="34" r="31" fill="none" stroke="'+pal[1]+'" stroke-width="1.2"/>'
-      + '<circle cx="34" cy="34" r="28.4" fill="none" stroke="'+pal[1]+'" stroke-width="0.7"/>';
-  /* The name sits inside the rim. Long names are squeezed to fit rather
-     than being allowed to run over the edge, so "United States" and
-     "Fiji" both sit cleanly within the same circle. */
-  const label = (name.length > 18 ? name.slice(0,17) + '…' : name).toUpperCase();
-  const fs = label.length > 12 ? 4.4 : label.length > 8 ? 5.2 : 6;
-  const MAXW = 38, est = label.length * (fs*0.60 + 0.85);
+  const uid = 'b' + (++BADGE_N) + (h % 9973);
+
+  /* Circles are written "cx cy r" and rects "x y w h" to keep the
+     table above readable; they are expanded here. */
+  const fills = motif.fill.map(f=>{
+    const n = f.trim().split(/\s+/).map(Number);
+    return n.length === 3
+      ? '<circle cx="'+n[0]+'" cy="'+n[1]+'" r="'+n[2]+'"/>'
+      : '<rect x="'+n[0]+'" y="'+n[1]+'" width="'+n[2]+'" height="'+n[3]+'" rx="1"/>';
+  }).join('');
+  const strokes = motif.stroke.map(d=>'<path d="'+d+'"/>').join('');
+
+  const label = (name.length > 17 ? name.slice(0,16) + '…' : name).toUpperCase();
+  const fs = label.length > 13 ? 8 : label.length > 9 ? 9.5 : 11;
+  const MAXW = 80, est = label.length * (fs * 0.62 + 0.9);
   const fit = est > MAXW ? ' textLength="'+MAXW+'" lengthAdjust="spacingAndGlyphs"' : '';
-  return '<svg class="badge-svg" viewBox="0 0 68 68" width="'+s+'" height="'+s+'" role="img" aria-label="Badge for '+esc(name)+'">'
-    + '<circle cx="34" cy="34" r="33" fill="'+pal[0]+'"/>'
-    + rim
-    + '<g fill="none" stroke="'+pal[2]+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="translate(0,-6) scale(0.82) translate(7,7)">'
-    + motif + '</g>'
-    + '<text x="34" y="53.5" text-anchor="middle" fill="'+pal[2]+'" font-family="ui-monospace,monospace" '
-    + 'font-size="'+fs+'" letter-spacing="0.85"'+fit+'>'+esc(label)+'</text>'
+
+  return '<svg class="badge-svg" viewBox="0 0 100 122" width="'+s+'" height="'+Math.round(s*1.22)+'" '
+    + 'role="img" aria-label="Badge for '+esc(name)+'">'
+    + '<defs>'
+      + '<linearGradient id="g'+uid+'" x1="0" y1="0" x2="0.65" y2="1">'
+      + '<stop offset="0" stop-color="'+pal[0]+'"/><stop offset="1" stop-color="'+pal[1]+'"/></linearGradient>'
+      + '<clipPath id="c'+uid+'"><g>'+shape+'</g></clipPath>'
+    + '</defs>'
+
+    /* the shape, with a soft highlight sweep across it */
+    + '<g fill="url(#g'+uid+')">'+shape+'</g>'
+    + '<g clip-path="url(#c'+uid+')">'
+      + '<path d="M-10 70 110 2v-20H-10z" fill="#ffffff" opacity="0.10"/>'
+    + '</g>'
+    /* a thin light rim, and a dotted one inside it */
+    + '<g fill="none" stroke="'+pal[2]+'" stroke-width="2.2" opacity="0.9">'+shape+'</g>'
+    + '<g fill="none" stroke="'+pal[2]+'" stroke-width="0.9" stroke-dasharray="1.5 3.5" opacity="0.65" '
+      + 'transform="translate(50,46) scale(0.86) translate(-50,-46)">'+shape+'</g>'
+
+    /* the motif */
+    + '<g transform="translate(50,42) scale(0.92) translate(-32,-30)">'
+      + '<g fill="'+pal[2]+'">'+fills+'</g>'
+      + '<g fill="none" stroke="'+pal[2]+'" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">'
+      + strokes+'</g></g>'
+
+    /* the ribbon */
+    + '<path d="M3 90 11 84v26L3 116z" fill="'+pal[3]+'" opacity="0.85"/>'
+    + '<path d="M97 90 89 84v26l8 6z" fill="'+pal[3]+'" opacity="0.85"/>'
+    + '<rect x="9" y="84" width="82" height="26" rx="4" fill="'+pal[3]+'"/>'
+    + '<rect x="9" y="84" width="82" height="26" rx="4" fill="none" stroke="'+pal[2]+'" stroke-width="1" opacity="0.5"/>'
+    + '<text x="50" y="101.5" text-anchor="middle" fill="'+pal[2]+'" '
+    + 'font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-weight="600" '
+    + 'font-size="'+fs+'" letter-spacing="0.6"'+fit+'>'+esc(label)+'</text>'
     + '</svg>';
 }
 /* Turn any badge, or the whole board, into a PNG the person can keep

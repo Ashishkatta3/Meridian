@@ -577,6 +577,13 @@ document.addEventListener('click', async e=>{
     const r = mode === 'up' ? await cloudSignUp(val('.f-e'), val('.f-p2'), val('.f-n'))
                             : await cloudSignIn(val('.f-e'), val('.f-p2'));
     AUTHMSG = r.error || r.note || '';
+    /* a new account has nothing in it, so send them to the four
+       questions rather than to an empty atlas */
+    if (!r.error && (mode === 'up' || !PREFS.onboarded)){
+      PREFS.onboarded = true; savePrefs();
+      location.hash = '#/welcome';
+      return;
+    }
     return rerender();
   }
   const ex = e.target.closest('[data-export]');
@@ -1166,80 +1173,6 @@ function cityCard(c){
     + ctl(c.id, c.name)+'</span></div>';
 }
 
-/* ---------- home ---------- */
-function viewHome(){
-  routeIsNight = isNightAt(38,-97);
-  const C = counts(), now = new Date();
-  const board = BOARD.map((b,i)=>{
-    const [name, sub, lat, lon, tz, href] = b, night = isNightAt(lat, lon, now), key = 'board'+i;
-    return '<a class="board-r'+(night?' night':'')+'" href="'+href+'">'
-      + '<span class="board-city"><span style="font-size:15px;font-weight:500;display:flex;align-items:center;gap:8px">'
-      + (night?'<span class="nightdot"></span>':'')+esc(name)+'</span>'
-      + '<span class="lab-s">'+esc(sub).toUpperCase()+' · '+fmtZone(now,tz)+'</span></span>'
-      + '<span class="board-right"><span class="sky" data-wx="'+key+'" data-night="'+(night?1:0)+'" style="font-family:var(--mono);font-size:13px">'
-      + glyph(night?'night':'clear',17)+'<span>—</span></span>'
-      + '<span class="board-t" data-tz="'+tz+'">'+fmtTime(now,tz)+'</span></span></a>';
-  }).join('');
-
-  /* the three most recent things you marked, newest date first, with the
-     shipped picks only as a fallback for a brand-new browser */
-  const dated = everything().filter(x=>statusOf(x.id) === 'been' && dateOf(x.id))
-    .sort((a,b)=>dateOf(b.id).localeCompare(dateOf(a.id)));
-  const yours = dated.length ? dated.slice(0,3)
-    : everything().filter(x=>x.kind === 'City' && statusOf(x.id) === 'been').slice(0,3);
-  const recent = yours.length >= 3 ? yours.map(x=>x.id) : null;
-  const feat = (recent || FEATURED).map(k=>{
-    const c = CITY_BY_KEY[k] || CITY_BY_KEY[String(k).replace(/^city:/,'')]; if (!c) return '';
-    const night = isNightAt(c.lat,c.lon);
-    return '<div class="card'+(night?' night':'')+'" style="min-height:200px"><a class="go" href="'+cityHref(c)+'" style="display:flex;flex-direction:column;gap:8px">'
-      + '<span class="lab-s">'+esc(c.state.name).toUpperCase()+'</span>'
-      + '<span class="card-t" style="font-size:34px">'+esc(c.name)+'</span>'
-      + '<span class="lab-s"><span data-tz="'+c.tz+'">'+fmtTime(now,c.tz)+'</span>'
-      + (dateOf(c.id) ? ' · ' + esc(prettyDate(dateOf(c.id)).toUpperCase()) : ' · '+entriesOf(c.key,'todo').length+' THINGS TO DO')+'</span></a>'
-      + '<span class="card-foot"><span class="chip warm" data-wx="'+c.key+'" data-night="'+(night?1:0)+'">'+glyph(night?'night':'clear',14)+'<span>—</span></span>'
-      + ctl(c.id, c.name)+'</span></div>';
-  }).join('');
-
-  const conts = CONTINENTS.map(ct=>{
-    const n = ct.countries.filter(c=>countryStatus(c)==='been').length;
-    const w = ct.countries.filter(c=>countryStatus(c)==='want').length;
-    return placeCard({name:ct.name, id:ct.id, href:contHref(ct), status:continentStatus(ct),
-      sub: n ? n+' OF '+ct.countries.length+' COUNTRIES' : (w ? w+' ON THE LIST' : ct.countries.length+' COUNTRIES')});
-  }).join('');
-
-  return '<div class="wrap" style="padding-top:64px"><div class="hero">'
-    + '<div class="hero-main">'
-    + '<span class="lab" style="color:var(--warm)">A PERSONAL TRAVEL ATLAS</span>'
-    + '<h1 class="title-xl">Somewhere on this map, the sun is still up.</h1>'
-    + '<p class="lede">Every place I have travelled, kept as a living atlas — what there is to do, where I ate, and what the clock and the sky are doing there at this exact moment.</p>'
-    + '<div style="display:flex;flex-wrap:wrap;gap:12px;padding-top:4px">'
-    + '<a class="btn" href="#/continents">Enter the atlas</a>'
-    + '<a class="btn ghost" href="#/map">See the map</a></div></div>'
-    + '<div class="hero-side"><div class="board"><div class="board-h"><span class="lab">RIGHT NOW</span>'
-    + '<span class="live"><i></i>LIVE</span></div>'+board+'</div>'
-    + '<p class="note" style="margin-top:12px">Dimmed rows are places where the sun has already set.</p></div></div>'
-
-    + '<div class="sec"><div class="stats">'
-    + stat(C.continents,'CONTINENTS')+stat(C.countries,'COUNTRIES')+stat(C.states,'STATES &amp; DISTRICTS')
-    + stat(C.cities,'CITIES')+stat(C.places,'PARKS &amp; REGIONS')+stat(C.wish,'ON THE LIST')+'</div></div>'
-
-    + '<div class="sec"><div class="panel">'
-    + '<div class="panel-head"><span style="display:flex;flex-wrap:wrap;align-items:center;gap:16px">'
-    + '<span class="lab">THE WHOLE WORLD</span>'
-    + '<span class="chip warm"><span class="pin" style="width:8px;height:8px;box-shadow:none"></span>BEEN</span>'
-    + '<span class="chip on"><span class="pin want" style="width:8px;height:8px;box-shadow:none"></span>WANT TO GO</span></span>'
-    + '<a class="btn ghost" href="#/map">Open the full map</a></div>'
-    + worldMap(mapPoints(mapFilter), 460, {filter:true})+'</div></div>'
-
-    + '<div class="sec">'+secHead(recent ? 'Where you were last' : 'Most recently added', C.cities+' CITIES LOGGED')
-    + '<div class="grid g-wide" style="padding-top:28px">'+feat+'</div></div>'
-
-    + '<div class="sec" id="continents">'+secHead('Start at the top','CONTINENT → COUNTRY → STATE → CITY')
-    + '<div class="grid g-cities" style="padding-top:28px">'+conts+'</div></div>'
-
-    + '<div class="sec"><p class="note">Mark anything as <strong>been</strong> or <strong>want to go</strong> — continents, countries, states, cities, parks, restaurants and every single thing to do. Marks are kept in this browser and drive the counts, the map pins and the CSV export.</p></div></div>';
-}
-
 /* ---------- full map page ---------- */
 let mapFilter = 'all';
 function viewMap(){
@@ -1304,7 +1237,7 @@ function viewContinent(ct){
   + '<div class="wrap"><div style="padding-top:36px;display:flex;flex-wrap:wrap;gap:32px;align-items:flex-end;justify-content:space-between">'
   + '<div style="flex:999 1 460px;min-width:0"><h1 class="title-xl">'+esc(ct.name)+'</h1>'
   + '<p class="lede" style="padding-top:18px">'+esc(ct.blurb)+'</p></div>'
-  + '<div style="flex:0 0 auto">'+ctl(ct.id, ct.name)+'</div></div>'
+  + '</div>'
   + '<div class="sec">'+secHead('Countries', n+' OF '+ct.countries.length+' LOGGED')
   + '<div class="grid g-cities" style="padding-top:28px">'+cards+'</div></div>'
   + '<div class="sec">'+secHead('Across the continent','00 LOGGED')
@@ -1384,6 +1317,8 @@ function viewCountry(co){
         season ? 'RIGHT NOW: '+season.label : 'MONTH BY MONTH')
     + climatePanel(ckey, co.name)+'</div>'
     + phrasePanel(co)
+    + countryEvents(co)
+    + countryBucket(co)
     + '<div class="sec">'+secHead('Well known for', pad2((pr.p||[]).length)+' PLACES')
     + (spots || blank('Nothing written yet','An admin can add the highlights for this country.'))
     + adminNote(co) + '</div>'
@@ -1486,8 +1421,15 @@ function moneyPanel(co){
     + '<span class="intel-v fx" data-fx="'+esc(cur[0])+'">'+(same ? 'your own money' : '—')+'</span>'
     + '<span class="note fxnote">'+(same
         ? 'The same money you live on, so nothing to convert.'
-        : 'In '+esc(home[0])+', the currency where you live. Fetched live when the page loaded.')
-    + '</span></div></div>';
+        : 'In '+esc(home[0])+', the currency where you live. Fetched live every time this page loads.')
+    + '</span></div>'
+    + (same ? '' : '<div class="intel-c"><span class="lab">CONVERT AN AMOUNT</span>'
+        + '<span class="fxconv"><input type="text" inputmode="decimal" value="'+esc(FXAMT)+'" '
+        + 'data-fxamt aria-label="Amount in '+esc(home[0])+'"><span class="fxunit">'+esc(home[0])+'</span>'
+        + '<span class="fxeq">=</span><span class="fxout" data-fxout="'+esc(cur[0])+'">—</span>'
+        + '<span class="fxunit">'+esc(cur[0])+'</span></span>'
+        + '<span class="note">Type what you would spend at home and see it in '+esc(co.name)+'\u2019s money.</span></div>')
+    + '</div>';
 }
 function paintMoney(){
   const home = homeMoney();
@@ -1499,18 +1441,47 @@ function paintMoney(){
       : (home[1] || '') + fmtMoney(r) + ' ' + home[0];
   });
   if (FX.note) document.querySelectorAll('.fxnote').forEach(el=>{ el.textContent = FX.note; });
+  paintConvert();
+}
+/* the amount box on a country page, kept in one place so the number and
+   the rate always agree */
+let FXAMT = '100';
+function paintConvert(){
+  const home = homeMoney();
+  document.querySelectorAll('[data-fxout]').forEach(el=>{
+    const code = el.dataset.fxout, r = rateFor(code);
+    const amt = parseFloat(String(FXAMT).replace(/[^0-9.]/g,''));
+    if (r == null || !isFinite(amt) || !(r > 0)){ el.textContent = '—'; return; }
+    /* rateFor gives one unit of `code` in home money, so invert it */
+    const v = amt / r;
+    el.textContent = v >= 1000 ? Math.round(v).toLocaleString()
+      : v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(2) : v.toPrecision(2);
+  });
 }
 /* a handful of words that change how a place treats you */
 function phrasePanel(co){
   const p = phrasesFor(co.slug);
   if (!p) return '';
-  return '<div class="sec">'+secHead('A few words of '+esc(p.name), 'BEFORE YOU GO')
+  const code = p.key, rtl = (typeof trRTL === 'function' && trRTL(code)) ? ' dir="rtl"' : '';
+  const canSay = typeof TR_CAN_SPEAK !== 'undefined' && TR_CAN_SPEAK
+    && typeof trHasVoice === 'function' && trHasVoice(code);
+  return '<div class="sec">'+secHead('A few words of '+esc(p.name), pad2(p.rows.length)+' PHRASES')
     + '<div class="phrases">'
-    + p.rows.map(r=>'<div class="ph"><span class="ph-e">'+esc(r[0])+'</span>'
-        + '<span class="ph-l" lang="'+esc(p.key)+'">'+esc(r[1])+'</span>'
-        + (r[2] ? '<span class="ph-s">'+esc(r[2])+'</span>' : '')+'</div>').join('')
-    + '</div><p class="note" style="padding-top:14px">The polite form in each case — the one that is never wrong with a stranger. '
-    + 'The third line is how to say it, not a spelling.</p></div>';
+    + p.rows.map(r=>'<div class="phr">'
+        + '<span class="phr-e">'+esc(r[0])+'</span>'
+        + '<span class="phr-l" lang="'+esc(code)+'"'+rtl+'>'+esc(r[1])+'</span>'
+        + '<span class="phr-s">'+(r[2] ? esc(r[2]) : '')+'</span>'
+        + (canSay ? '<button type="button" class="phsay" data-say="'+esc(r[1])+'" data-saylang="'+esc(code)+'" '
+          + 'aria-label="Hear '+esc(r[0])+' in '+esc(p.name)+'">'
+          + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '
+          + 'stroke-linecap="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></button>' : '')
+        + '</div>').join('')
+    + '</div>'
+    + '<p class="note" style="padding-top:14px">The polite form in each case \u2014 the one that is never wrong with a '
+    + 'stranger. The grey line is how to say it, not a spelling'
+    + (canSay ? ', and the speaker button reads it out in a '+esc(p.name)+' voice' : '')+'.</p>'
+    + '<div style="padding-top:20px">'+trPanel()+'</div>'
+    + '</div>';
 }
 /* admins can rewrite any of the guide text; everyone else just reads it */
 function adminNote(co){
@@ -1785,9 +1756,9 @@ function viewBoard(){
   return crumbs([['World','#/continents'],['Board','']])
   + '<div class="wrap"><div style="padding-top:36px;display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end;justify-content:space-between">'
   + '<div><h1 class="title-l">The board</h1>'
-  + '<p class="lede" style="padding-top:14px">One badge for every place you have been. The shape, the rim and the '
-  + 'colours come from the place’s own name, so each badge belongs to that place and nowhere else — '
-  + 'a shelf of them instead of a drawer of magnets.</p></div>'
+  + '<p class="lede" style="padding-top:14px">One badge for every place you have been. The outline, the colours, '
+  + 'the emblem and the ribbon are all worked out from the place’s own name, so no two come out the same — '
+  + 'a wall of enamel pins rather than a drawer of fridge magnets.</p></div>'
   + (all.length ? '<button class="btn" data-shareboard="1">Share the whole board</button>' : '')+'</div>'
   + body + '</div>';
 }
@@ -1856,6 +1827,14 @@ function viewAccount(){
   + '<p class="note" style="padding-top:16px">These are deliberately separate. The passport decides whether you need a '
   + 'visa; the country you live in decides the money you think in. Plenty of people do not have the same answer for both.</p></div>'
 
+  + '<div class="sec">'+secHead('Your places','MARK THEM IN BULK')
+  + '<div style="padding-top:24px"><div class="panel"><div class="panel-head" style="border:0">'
+  + '<span style="display:flex;flex-direction:column;gap:6px">'
+  + '<span class="card-t" style="font-size:24px">Run through the countries again</span>'
+  + '<span class="note">The set-up page lists all '+ALL_COUNTRIES.length+' countries as one grid, which is far quicker '
+  + 'than opening them one at a time.</span></span>'
+  + '<a class="btn ghost" href="#/welcome">Open the set-up page</a></div></div></div></div>'
+
   + '<div class="sec">'+secHead('Backup','KEEP A COPY')
   + '<div class="setgrid" style="padding-top:24px">'
   + '<div class="setbox"><span class="card-t" style="font-size:22px">Export everything</span>'
@@ -1889,8 +1868,13 @@ function route(){
   scrollTo = null;
   const first = parts[0];
 
-  if (!parts.length){ html = viewHome(); points = boardPoints(); }
-  else if (first === 'continents'){ html = viewHome(); points = boardPoints(); scrollTo = 'continents'; }
+  if (!parts.length){ html = viewHome(); }
+  else if (first === 'continents'){ html = viewContinents(); title = 'The atlas — Meridian'; }
+  else if (first === 'events'){ html = viewEvents(); title = 'The calendar — Meridian'; }
+  else if (first === 'bucket'){ html = viewBucket(); title = 'Bucket list — Meridian'; }
+  else if (first === 'translate'){ html = viewTranslate(); title = 'Translate — Meridian'; }
+  else if (first === 'plan'){ html = viewPlan(); title = 'Plan a trip — Meridian'; }
+  else if (first === 'welcome'){ html = viewOnboard(); title = 'Set up your atlas — Meridian'; }
   else if (first === 'map'){ html = viewMap(); title = 'The map — Meridian'; }
   else if (first === 'been' || first === 'want'){ html = viewList(first); title = (first==='been'?'Been there':'Want to go')+' — Meridian'; }
   else if (first === 'board'){ html = viewBoard(); title = 'The board — Meridian'; }
@@ -1937,10 +1921,10 @@ function route(){
   document.getElementById('app').innerHTML = html;
   document.title = title;
   document.getElementById('footnote').textContent = foot;
-  document.querySelectorAll('.navlinks a[data-nav]').forEach(a=>
+  document.querySelectorAll('a[data-nav]').forEach(a=>
     a.classList.toggle('on', a.dataset.nav === (first || 'home')));
   applyTheme(); tick(); wireMaps(); paintPhotos(); wireAddBox(); wireHomePort(); paintAuthState();
-  paintMoney();
+  paintMoney(); wireViews();
   loadWeather(points);
   lastRoute = raw;
 }
